@@ -1,2 +1,2 @@
-# seaoflife
-new global biodiversity indicators using AquaMaps species distribution models
+# gmbi
+global marine biodiversity indicators (gmbi; pronounced "gimby")
