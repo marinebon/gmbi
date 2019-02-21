@@ -1,2 +1,2 @@
 # gmbi
-global marine biodiversity indicators (gmbi; pronounced "gimby")
+global marine biodiversity indicators (gmbi; pronounced "gumby")
