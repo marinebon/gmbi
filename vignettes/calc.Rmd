@@ -1,0 +1,562 @@
+---
+title: "Calculate Indicators"
+author: "Ben Best"
+date: "`r Sys.Date()`"
+#output: rmarkdown::html_vignette
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+#    fig_retina: null
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  chunk_output_type: inline
+bibliography: ../inst/bbnj.bib
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  #collapse = TRUE,
+  #comment = "#>",
+  message = F
+)
+```
+
+## Setup database
+
+Using PostgreSQL with PostGIS extension in [Docker](https://www.docker.com/get-started):
+
+- [kartoza/postgis - Docker Hub](https://hub.docker.com/r/kartoza/postgis/)
+
+- [Set Up a PostGIS Database With Docker · Alex Urquhart](https://alexurquhart.com/post/set-up-postgis-with-docker/)
+
+### create volume `pg_data`
+
+```
+docker volume create pg_data
+```
+
+### create container `postgis`, database `am` user `admin`
+
+
+On command line:
+
+```
+# set password as environment variable read in from file
+DB_PASS=`cat ~/private/pg_pass`
+
+# run docker with image
+docker run --name=postgis \
+  -d -e POSTGRES_USER=admin \
+  -e POSTGRES_PASS=$DB_PASS \
+  -e POSTGRES_DBNAME=am \
+  -e ALLOW_IP_RANGE=0.0.0.0/0 \
+  -p 5432:5432 \
+  -v pg_data:/var/lib/postgresql \
+  -v /Users/bbest/docker_pg_data:/data \
+  --restart=always \
+  --shm-size=1g \
+  kartoza/postgis:11.0-2.5
+
+# check logs
+docker logs postgis
+```
+
+## Connect to database 
+
+```{r get db con}
+library(tidyverse)
+library(here)
+library(glue)
+library(raster)
+library(DBI)
+library(RPostgreSQL)
+library(tictoc)
+library(furrr)
+library(RColorBrewer)
+
+library(devtools); load_all() # library(gmbi)
+
+pal <- colorRampPalette(brewer.pal(11, "Spectral"))
+cols <- rev(pal(255))
+par(mar=c(0.5,0.5,0.5,0.5))
+
+con <- get_db_con(password=readLines("~/private/pg_pass"))
+con
+```
+
+## Load AquaMaps csvs into database
+
+All the species distribution data was generously provided as comma-seperated value (csv) files in a zip package `aquamaps_ver0816c.zip` by Kristin Kaschner and 
+Cristina Garilao to Ben Best <ben@ecoquants.com> on Jun 21, 2018 from the extensive work available at <http://AquaMaps.org> to be fully cited [@kaschnerAquaMapsPredictedRange2016] whenever used.
+
+Generated here are derived products. Please contact Kristin Kaschner <kristin.kaschner@biologie.uni-freiburg.de> and 
+Cristina Garilao <cgarilao@geomar.de> for access to the full database.
+
+```{r load csv into db, eval=F}
+csv_to_db(con)
+
+# drop odd columns
+dbExecute(con, 'ALTER TABLE spp DROP COLUMN "X11", DROP COLUMN "X12";')
+```
+
+```{r set spp species_genus, eval=F}
+spp <- tbl(con, "spp") %>% 
+  collect() %>% 
+  mutate(
+    genus_species = glue("{Genus} {Species}") %>% as.character())
+
+copy_to(
+  con, spp, "spp", temporary=F, overwrite=T,
+  unique_indexes=list("SPECIESID"),
+  indexes = list("group", "genus_species"))
+```
+
+Load tables for querying.
+
+```{r load tbls}
+spp       <- tbl(con, "spp")
+cells     <- tbl(con, "cells")
+spp_cells <- tbl(con, "spp_cells")
+obs_cells <- tbl(con, "obs_cells")
+```
+
+## Assign taxonomic groups
+
+Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensorGlobalPatternsPredictors2010].
+
+- Primarily coastal species [@tittensorGlobalPatternsPredictors2010]
+    - **Coastal fishes**: `Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
+    - Non-oceanic sharks: TODO with `rredlist::rl_habitats()`
+    - **Non-squid cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida")`
+    - **Pinnipeds**: `Family %in% c("Odobenidae", "Otariidae", "Phocidae")`
+    - **Corals**: `Class == "Anthozoa"` (soft/hard + anemones + gorgonians)
+    - **Seagrasses**: `Order == "Alismatales"`
+    - **Mangroves**: `Genus == "Avicennia" & Species == "germinans"` (n=1)
+- Primarily oceanic species [@tittensorGlobalPatternsPredictors2010]
+    - **Tunas and billfishes**: `Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
+    - Oceanic sharks: TODO with `rredlist::rl_habitats()`
+    - **Squids**:  `Order %in% c("Myopsida","Oegopsida")`
+    - **Cetaceans**: `Order == "Artiodactyla"`
+    - **Euphausiids**: `Order == "Euphausiacea"`
+    - Foraminifera: n=0 for Phylum=Retaria
+- Others (Phylum - Class)
+    - Arthropoda
+        - **Crustaceans**: `Class %in% c("Malacostraca","Ostracoda","Branchiopoda","Cephalocarida","Maxillopoda")`
+        - **Sea spiders**: `Class == "Pycnogonida"`
+        - skipping: Arachnida (1), Merostomata (1)
+    - Mollusca
+        - **Gastropods**: `Class == "Gastropoda"`
+        - **Bivalves**:  `Class == "Bivalvia"`
+        - **Chitons**: `Class == "Polyplacophora"`
+        - Cephalopods
+        - Squids
+    - Chordata
+        - **Tunicates**: `Class %in% c("Ascidiacea","Thaliacea")`
+        - **Sharks**: `Class == "Elasmobranchii"` (actually Class=Chondrichthyes, Subclass=Elasmobranchii)
+        - **Reptiles**: `Class == "Reptilia"` crocodiles, sea snakes & sea turtles
+    - **Echinoderms**: `Phylum == "Echinodermata"`
+    - **Sponges**: `Phylum == "Porifera"`
+    - **Worms**: `Phylum == "Annelida"`
+    - Cnidaria
+        - **Hydrozoans**: `Class == "Hydrozoa"`
+
+```{r set spp groups, eval=F}
+spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
+
+if (!"group" %in% spp_cols){
+
+  spp <- spp %>% 
+    mutate(
+      group = case_when(
+        Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Coastal fishes",
+        Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida") ~ "Non-squid cephalopods",
+        Family %in% c("Odobenidae", "Otariidae", "Phocidae") ~ "Pinnipeds",
+        Class == "Anthozoa" ~ "Corals",
+        Order == "Alismatales" ~ "Seagrasses",
+        Genus == "Avicennia" & Species == "germinans" ~ "Mangroves",
+        Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Tunas & billfishes",
+        Order %in% c("Myopsida","Oegopsida") ~ "Squids",
+        Order == "Artiodactyla" ~ "Cetaceans",
+        Order == "Euphausiacea" ~ "Euphausiids",
+        Class %in% c("Malacostraca","Ostracoda","Branchiopoda","Cephalocarida","Maxillopoda") ~ "Crustaceans",
+        Class == "Pycnogonida" ~ "Sea spiders",
+        Class == "Gastropoda" ~ "Gastropods",
+        Class == "Bivalvia" ~ "Bivalves",
+        Class == "Polyplacophora" ~ "Chitons",
+        Class %in% c("Ascidiacea","Thaliacea") ~ "Tunicates",
+        Class == "Elasmobranchii" ~ "Sharks",
+        Class == "Reptilia"~ "Reptiles",
+        Phylum == "Echinodermata"~ "Echinoderms",
+        Phylum == "Porifera" ~ "Sponges",
+        Phylum == "Annelida" ~ "Worms",
+        Class == "Hydrozoa" ~ "Hydrozoans")) %>% 
+    collect()
+  
+  copy_to(
+    con, spp, "spp", temporary=F, overwrite=T,
+    unique_indexes=list("SPECIESID"),
+    indexes = list("group"))
+}
+
+spp_group <- tbl(con, "spp") %>% 
+  pull(group)
+table(spp_group, useNA="always")
+```
+
+## Get extinction risk from IUCN
+
+RedList token issued to <ben@ecoquants.com> via <http://apiv3.iucnredlist.org/api/v3/token>.
+
+
+```{r get spp iucn_*}
+iucn_csv <- here("inst/spp_iucn.csv")
+
+if (!file.exists(iucn_csv)){
+  
+  # speed up get_iucn() by running 
+  # as multi-threaded process w/ furrr::future_map()
+
+  plan(multiprocess)
+  
+  # get private IUCN RedList token key
+  rl_token <- readLines("~/private/iucn_api_key")
+  spp <- tbl(con, "spp") %>% collect()
+  
+  dir_tmp <- here("inst/tmp")
+  # iterate in chunks of 1000
+  n <- 1000
+  for ( i in seq(1, nrow(spp), by=n) ){
+    i_beg <- i
+    i_end <- i - 1 + n
+    csv <- glue("{dir_tmp}/spp_iucn_{str_pad(i_beg, 5, 'left', '0')}-{str_pad(i_end, 5, 'left', '0')}.csv")
+    cat(glue("{basename(csv)} - {Sys.time()}\n\n"))
+    
+    spp_i <- slice(spp, i_beg:i_end)
+    tic()  
+    spp_i$iucn <- future_map(spp_i$genus_species, get_iucn, key=rl_token)
+    toc() # 262.211 sec; 262.211 / 1000 * 24904 / 60 = 108.8 min for all rows
+    
+    spp_i <- spp_i %>% 
+      mutate(
+        iucn_category         = map_chr(iucn, "category"),
+        iucn_criteria         = map_chr(iucn, "criteria"),
+        iucn_population_trend = map_chr(iucn, "population_trend"),
+        iucn_published_year   = map_chr(iucn, "published_year")) %>% 
+      select(SPECIESID, starts_with("iucn_"))
+    
+    write_csv(spp_i, csv)
+  }
+
+  # consolidate csvs
+  csvs <- list.files(dir_tmp, "^spp_iucn_.*", full.names = T)
+  df <- map(csvs, function(x) read_csv(x)) %>% bind_rows()
+  write_csv(df, csv)
+  unlink(dir_tmp, recursive = T)
+}
+iucn <- read_csv(iucn_csv)
+
+iucn_cols <- iucn %>% select(starts_with("iucn_")) %>% names()
+spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
+if (!all(iucn_cols %in% spp_cols)){
+  # write to db
+  spp <- tbl(con, "spp") %>% 
+    collect() %>% 
+    left_join(df, by="SPECIESID")
+  copy_to(
+    con, spp, "spp", temporary=F, overwrite=T,
+    unique_indexes=list("SPECIESID"),
+    indexes = list("group", "genus_species", "iucn_category"))
+}
+
+spp_iucn_category <- tbl(con, "spp") %>% 
+  pull(iucn_category)
+table(spp_iucn_category, useNA="always")
+```
+
+## Calculate species richness 
+
+Using AquaMaps probability ≥ 0.5 [@kleinShortfallsGlobalProtected2015; @oharaAligningMarineSpecies2017] to establish presence.
+
+### Calculate `nspp`, all taxa
+
+```{r calc nspp for all}
+spp_prob_threshold <- 0.5
+dir_out <- here("inst/rasters")
+
+spp       <- tbl(con, "spp")
+cells     <- tbl(con, "cells")
+spp_cells <- tbl(con, "spp_cells")
+
+tif <- (glue("{dir_out}/nspp_all.tif"))
+
+if (!file.exists(tif)){
+  
+  # get species richness, with default col_cellid="cellid"
+  cells_nspp <- spp_cells %>% 
+    filter(
+      probability >= spp_prob_threshold) %>% 
+    left_join(cells, by=c("CenterLat","CenterLong")) %>% 
+    group_by(cellid) %>% 
+    summarize(
+      nspp = n()) %>% 
+    collect()
+  r_nspp_all <- df_to_raster(cells_nspp, "nspp", tif)
+}
+
+if (!file.exists(tif)){
+  # OR get species richness, with cols_lonlat=c("CenterLat","CenterLong")
+  cells_nspp <- spp_cells %>% 
+    filter(
+      probability >= spp_prob_threshold) %>% 
+    group_by(CenterLat, CenterLong) %>% 
+    summarize(
+      nspp = n()) %>% 
+    collect()
+  r_nspp_all <- df_to_raster(
+    cells_nspp, "nspp", tif, 
+    col_cellid=NULL, cols_lonlat=c("CenterLat","CenterLong"))
+}
+r_nspp_all <- raster(tif)
+
+plot(r_nspp_all, col = cols, main="Species Richness, All")
+```
+
+### Calculate `nspp`, by taxonomic group
+
+```{r calc nspp by group}
+spp       <- tbl(con, "spp")
+cells     <- tbl(con, "cells")
+spp_cells <- tbl(con, "spp_cells")
+
+spp_groups <- tbl(con, "spp") %>% 
+  distinct(group) %>% 
+  pull(group)
+
+for (group in spp_groups){
+  grp <- group_to_grp(group)
+  tif <- (glue("{dir_out}/nspp_{grp}.tif"))
+  
+  if (file.exists(tif)) next()
+  
+  cat(glue("{grp} - {Sys.time()}\n\n"))
+  # group = spp_groups[12] # "Tunas & billfishes" (n=63)
+  
+  # get species diversity, with default col_cellid="cellid"
+  if (is.na(group)){
+    spp_grp <- filter(spp, is.na(group))
+  } else{
+    spp_grp <- filter(spp, group == !!group)
+  }
+  
+  cells_nspp <- spp_grp %>% 
+    select(SPECIESID) %>% 
+    left_join(
+      spp_cells %>% 
+        select(
+          SpeciesID, probability,
+          CenterLat, CenterLong) %>% 
+        filter(
+          probability >= spp_prob_threshold), 
+      by=c("SPECIESID"="SpeciesID")) %>% 
+    left_join(
+      cells, 
+      by=c("CenterLat","CenterLong")) %>% 
+    group_by(cellid) %>% 
+    summarize(
+      nspp = n()) %>% 
+    collect()
+  r_grp <- df_to_raster(cells_nspp, "nspp", tif)
+  plot(r_grp, col = cols, main=glue("n_spp {group}"))
+}
+
+# get all tifs, except first one "nspp_all.tif"
+tifs <- list.files(dir_out, "^nspp_.*.tif$", full.names = T)[-1]
+s_nspp <- stack(tifs)
+names(s_nspp) <- str_replace(names(s_nspp), "nspp_", "")
+plot(s_nspp, col = cols)
+```
+
+## Calculate extinction risk
+
+The Red List Index ([@butchartImprovementsRedList2007] et al. 2007) is summarized [@juslenApplicationRedList2016] as:
+
+  > The RLI [Red List Index] value was calculated by multiplying the number of taxa in each red-list category by the category weight (0 for LC, 1 for NT, 2 for VU, 3 for EN, 4 for CR, 5 for RE/EX). These products were summed and then divided by the number of taxa multiplied by the maximum weight 5 (“maximum possible denominator”). To obtain the RLI value, this sum is subtracted from 1. The index value varies between 0 and 1 (Butchart et al. 2007). The lower the value, the closer the set of taxa is heading towards extinction. If the value is 0 all the taxa are (regionally) extinct. If the value is 1 all the taxa are assessed as Least Concern.
+
+We will use simply the numerator, the Red List Sum (RLS), of the Red List Index (RLI) to quantify the "endangeredness" of a cell without dilution from being in a species-rich place as the RLI does when averaging the extinction risk for all assessed species.
+
+$$RLS = \sum_{i=1}^{n_{spp}} w_i$$
+$$RLI = 1 - \frac{RLS}{n_{spp} * max(w)}$$
+
+- [IUCN Red List | Wikipedia](https://en.wikipedia.org/wiki/IUCN_Red_List)
+- [Search | IUCN Red List](https://www.iucnredlist.org/search/stats)
+
+Weights used for Red List Sum (RLS) indicator:
+
+- **DD**: `NA` - Data Deficient
+- **LC**: `0` - Least Concern
+- **LR/lc**: `0` - Lower Risk, least concern (1994 category)
+- **NT**: `1` - Near Threatened
+- **LR/cd**: `1` - Lower Risk, conservation dependent (1994 category)
+- **LR/nt**: `1` - Lower Risk, near threatened (1994 category)
+- **VU**: `2` - VUlnerable
+- **EN**: `3` - ENdangered
+- **CR**: `4` - CRitically endangered
+- **EW**: `NA` (\*not `5`) - Extinct in the Wild (n=0)
+- **EX**: `NA` (\*not `5`) - EXtinct (n=1)
+
+Note that only 1 species is listed as extinct (EX) or extinct in the wild (EW). Since the species is no longer considered present, protection is assumed to not afford any conservation value.
+
+ ### Set `iucn_weight` to species
+
+```{r set spp iucn_weight}
+iucn_category_weights = c(
+  DD=NA, 
+  LC=0, `LR/lc`=0, 
+  NT=1, `LR/cd`=1, `LR/nt`=1, 
+  VU=2, 
+  EN=3, 
+  CR=4, 
+  EW=NA,
+  EX=NA)
+
+spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
+
+if (!"iucn_weight" %in% spp_cols){
+  
+  spp <- tbl(con, "spp") %>% 
+    collect() %>% 
+    mutate(
+      iucn_weight = recode(iucn_category, !!!iucn_category_weights))
+  
+  copy_to(
+    con, spp, "spp", temporary=F, overwrite=T,
+    unique_indexes=list("SPECIESID"),
+    indexes = list("group", "genus_species", "iucn_weight"))
+}
+
+spp_iucn_weight <- tbl(con, "spp") %>% 
+  pull(iucn_weight)
+table(spp_iucn_weight, useNA="always")
+```
+
+### Calculate `rls`, all taxa
+
+```{r calc rls for all}
+spp       <- tbl(con, "spp")
+cells     <- tbl(con, "cells")
+spp_cells <- tbl(con, "spp_cells")
+
+tif <- (glue("{dir_out}/rls_all.tif"))
+
+if (!file.exists(tif)){
+  
+  # calculate RedList sum of weights
+  cells_rls <- spp %>% 
+    filter(
+      !is.na(iucn_weight), 
+      iucn_weight != 0) %>% 
+    left_join(
+      spp_cells %>% 
+        select(
+          SpeciesID, probability,
+          CenterLat, CenterLong) %>% 
+        filter(
+          probability >= spp_prob_threshold), 
+      by=c("SPECIESID"="SpeciesID")) %>% 
+    left_join(
+      cells, by=c("CenterLat","CenterLong")) %>% 
+    group_by(cellid) %>% 
+    summarize(
+      rls = sum(iucn_weight)) %>% 
+    collect()
+  r_rls_all <- df_to_raster(cells_rls, "rls", tif)
+}
+
+r_rls_all <- raster(tif)
+plot(r_rls_all, col = cols, main="Red List Sum, All")
+```
+
+### Calculate `rls`, by taxonomic group
+
+```{r calc rls by group}
+spp       <- tbl(con, "spp")
+cells     <- tbl(con, "cells")
+spp_cells <- tbl(con, "spp_cells")
+
+spp_groups <- tbl(con, "spp") %>% 
+  distinct(group) %>% 
+  pull(group)
+
+for (group in spp_groups){
+  # group = spp_groups[12] # "Tunas & billfishes" (n=63)
+  # group = spp_groups[2] # NA
+  grp <- group_to_grp(group)
+  tif <- (glue("{dir_out}/rls_{grp}.tif"))
+  
+  if (file.exists(tif)) next()
+  
+  #cat(glue("{grp} - {Sys.time()}\n\n"))
+  
+  # filter by group
+  if (is.na(group)){
+    spp_grp <- filter(spp, is.na(group))
+  } else{
+    spp_grp <- filter(spp, group == !!group)
+  }
+  
+  spp_grp_w <- spp_grp %>% 
+    filter(
+      !is.na(iucn_weight), 
+      iucn_weight != 0) %>% 
+    collect()
+  
+  if (nrow(spp_grp_w) == 0){
+    #cat(glue("  all iucn_weight == NA\n", .trim=F))
+  } else {
+    # calculate RedList sum of weights
+    cells_rls <- spp_grp %>% 
+      filter(
+        !is.na(iucn_weight), 
+        iucn_weight != 0) %>% 
+      left_join(
+        spp_cells %>% 
+          select(
+            SpeciesID, probability,
+            CenterLat, CenterLong) %>% 
+          filter(
+            probability >= spp_prob_threshold), 
+        by=c("SPECIESID"="SpeciesID")) %>% 
+      left_join(
+        cells, by=c("CenterLat","CenterLong")) %>% 
+      group_by(cellid) %>% 
+      summarize(
+        rls = sum(iucn_weight)) %>% 
+      collect()
+    
+    r_grp <- df_to_raster(cells_rls, "rls", tif) 
+    plot(r_grp, col = cols, main=glue("Red List Sum, {group}"))
+  }
+}
+
+# get all tifs, except first one "nspp_all.tif"
+tifs <- list.files(dir_out, "^rls_.*.tif$", full.names = T)[-1]
+s_rls <- stack(tifs)
+names(s_rls) <- str_replace(names(s_rls), "rls_", "")
+plot(s_rls, col = cols)
+```
+
+```{r}
+## TODO: Archive db
+
+# [arkdb](https://ropensci.github.io/arkdb/): archive and unarchive databases using flat files
+```
+
+## References
+
+
+

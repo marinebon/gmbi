@@ -83,14 +83,19 @@
   </a>
   <ul class="dropdown-menu" role="menu">
     <li>
-      <a href="../articles/load_db.html">Setup Database</a>
+      <a href="../articles/calc.html">Calculate Indicators</a>
     </li>
   </ul>
 </li>
       </ul>
       
       <ul class="nav navbar-nav navbar-right">
-        
+        <li>
+  <a href="https://github.com/marinebon/gmbi">
+    <span class="fa fa-github fa-lg"></span>
+     
+  </a>
+</li>
       </ul>
       
     </div><!--/.nav-collapse -->
@@ -117,8 +122,8 @@
     <tbody>
       <tr>
         <th colspan="2">
-          <h2 id="section-read" class="hasAnchor"><a href="#section-read" class="anchor"></a>Read</h2>
-          <p class="section-desc"></p>
+          <h2 id="section-database" class="hasAnchor"><a href="#section-database" class="anchor"></a>Database</h2>
+          <p class="section-desc"><p>database operations to connect and load data</p></p>
         </th>
       </tr>
       <tr>
@@ -134,6 +139,52 @@
         </td>
         <td><p>load csv data into database</p></td>
       </tr>
+    </tbody><tbody>
+      <tr>
+        <th colspan="2">
+          <h2 id="section-species" class="hasAnchor"><a href="#section-species" class="anchor"></a>Species</h2>
+          <p class="section-desc"><p>handle taxonomic naming and fetch remote species data</p></p>
+        </th>
+      </tr>
+      <tr>
+        
+        <td>
+          <p><code><a href="get_iucn.html">get_iucn()</a></code> </p>
+        </td>
+        <td><p>get IUCN Red List information</p></td>
+      </tr><tr>
+        
+        <td>
+          <p><code><a href="group_to_grp.html">group_to_grp()</a></code> </p>
+        </td>
+        <td><p>convert proper Group to grp abbreviation for file naming</p></td>
+      </tr><tr>
+        
+        <td>
+          <p><code><a href="grp_to_group.html">grp_to_group()</a></code> </p>
+        </td>
+        <td><p>convert grp abbreviation to proper Group for file naming</p></td>
+      </tr>
+    </tbody><tbody>
+      <tr>
+        <th colspan="2">
+          <h2 id="section-raster" class="hasAnchor"><a href="#section-raster" class="anchor"></a>Raster</h2>
+          <p class="section-desc"><p>raster operations, eg for converting from database</p></p>
+        </th>
+      </tr>
+      <tr>
+        
+        <td>
+          <p><code><a href="df_to_raster.html">df_to_raster()</a></code> </p>
+        </td>
+        <td><p>data frame to global half-degree raster</p></td>
+      </tr><tr>
+        
+        <td>
+          <p><code><a href="raster_na.html">raster_na()</a></code> </p>
+        </td>
+        <td><p>get global half-degree raster with NAs</p></td>
+      </tr>
     </tbody>
     </table>
   </div>
@@ -141,7 +192,9 @@
   <div class="col-md-3 hidden-xs hidden-sm" id="sidebar">
     <h2>Contents</h2>
     <ul class="nav nav-pills nav-stacked">
-      <li><a href="#section-read">Read</a></li>
+      <li><a href="#section-database">Database</a></li>
+      <li><a href="#section-species">Species</a></li>
+      <li><a href="#section-raster">Raster</a></li>
     </ul>
   </div>
 </div>

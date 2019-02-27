@@ -1,6 +1,19 @@
 reference:
-- title: "Read"
+- title: "Database"
+  desc: "database operations to connect and load data"
   contents:
-  - starts_with("get_")
   - "get_db_con"
   - "csv_to_db"
+
+- title: "Species"
+  desc: "handle taxonomic naming and fetch remote species data"
+  contents:
+  - "get_iucn"
+  - "group_to_grp"
+  - "grp_to_group"
+
+- title: "Raster"
+  desc: "raster operations, eg for converting from database"
+  contents:
+  - "df_to_raster"
+  - "raster_na"

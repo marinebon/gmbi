@@ -24,7 +24,7 @@ get_db_con <- function(
   library(DBI)
   library(RPostgreSQL)
 
-  dbConnect(
+  DBI::dbConnect(
     drv      = RPostgreSQL::PostgreSQL(),
     host     = host,
     port     = port,
@@ -73,35 +73,36 @@ csv_to_db <- function(
     csv_db <- file.path(pfx_db, tbl_csv[[tbl]])
     delim  <- ","
 
-    if (tbl %in% dbListTables(con) & !redo) next
+    if (tbl %in% DBI::dbListTables(con) & !redo) next
     if (tbl %in% c("env_cells")) delim = "\t"
 
     cat(glue("{i} {tbl}: {basename(csv)}\n\n"))
 
-    d <- read_delim(csv, delim = delim, n_max = 10, guess_max = 2000000)
-    copy_to(con, d, tbl, temporary=F, overwrite=T)
+    d <- readr::read_delim(csv, delim = delim, n_max = 10, guess_max = 2000000)
+    dplyr::copy_to(con, d, tbl, temporary=F, overwrite=T)
 
-    dbExecute(con, glue("DELETE FROM {tbl};"))
-    dbExecute(con, glue("COPY {tbl} FROM '{csv_db}' WITH DELIMITER '{delim}' CSV HEADER;"))
+    DBI::dbExecute(con, glue::glue("DELETE FROM {tbl};"))
+    DBI::dbExecute(con, glue::glue("COPY {tbl} FROM '{csv_db}' WITH DELIMITER '{delim}' CSV HEADER;"))
   }
 
-  spp       <- tbl(con, "spp")
-  obs_cells <- tbl(con, "obs_cells")
-  spp_cells <- tbl(con, "spp_cells")
-  env_cells <- tbl(con, "env_cells")
+  spp       <- dplyr::tbl(con, "spp")
+  obs_cells <- dplyr::tbl(con, "obs_cells")
+  spp_cells <- dplyr::tbl(con, "spp_cells")
+  env_cells <- dplyr::tbl(con, "env_cells")
 
   # AquaMaps raster specifications for 0.5 degree global raster
-  r_na <- raster(
+  r_na <- raster::raster(
     xmn = -180, xmx = 180, ymn = -90, ymx = 90,
     resolution=0.5, crs=leaflet:::epsg4326)
 
   cells <- env_cells %>%
-    group_by(CenterLat, CenterLong) %>%
-    summarize() %>%
-    collect() %>%
-    mutate(
-      cellid = cellFromXY(r_na, matrix(data = c(CenterLong, CenterLat), ncol=2)))
-  copy_to(con, cells, "cells", temporary=F, overwrite=T)
+    dplyr::group_by(CenterLat, CenterLong) %>%
+    dplyr::summarize() %>%
+    dplyr::collect() %>%
+    dplyr::mutate(
+      cellid = raster::cellFromXY(
+        r_na, matrix(data = c(CenterLong, CenterLat), ncol=2)))
+  dplyr::copy_to(con, cells, "cells", temporary=F, overwrite=T)
 
   TRUE
 }
