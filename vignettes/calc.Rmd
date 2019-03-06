@@ -14,7 +14,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
   %\VignetteEngine{knitr::rmarkdown}
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 bibliography: ../inst/bbnj.bib
 ---
 
@@ -81,10 +81,18 @@ library(RColorBrewer)
 
 library(devtools); load_all() # library(gmbi)
 
+# paths
+dir_out      <- here("data-raw/rasters")
+dir_tmp      <- here("inst/tmp")
+spp_iucn_csv <- here("data-raw/spp_iucn.csv")
+spp_csv      <- here("data-raw/spp.csv")
+
+# plotting parameters
 pal <- colorRampPalette(brewer.pal(11, "Spectral"))
 cols <- rev(pal(255))
 par(mar=c(0.5,0.5,0.5,0.5))
 
+# database connection
 con <- get_db_con(password=readLines("~/private/pg_pass"))
 con
 ```
@@ -214,9 +222,7 @@ RedList token issued to <ben@ecoquants.com> via <http://apiv3.iucnredlist.org/ap
 
 
 ```{r get spp iucn_*}
-iucn_csv <- here("inst/spp_iucn.csv")
-
-if (!file.exists(iucn_csv)){
+if (!file.exists(spp_iucn_csv)){
   
   # speed up get_iucn() by running 
   # as multi-threaded process w/ furrr::future_map()
@@ -226,8 +232,7 @@ if (!file.exists(iucn_csv)){
   # get private IUCN RedList token key
   rl_token <- readLines("~/private/iucn_api_key")
   spp <- tbl(con, "spp") %>% collect()
-  
-  dir_tmp <- here("inst/tmp")
+
   # iterate in chunks of 1000
   n <- 1000
   for ( i in seq(1, nrow(spp), by=n) ){
@@ -258,7 +263,7 @@ if (!file.exists(iucn_csv)){
   write_csv(df, csv)
   unlink(dir_tmp, recursive = T)
 }
-iucn <- read_csv(iucn_csv)
+iucn <- read_csv(spp_iucn_csv)
 
 iucn_cols <- iucn %>% select(starts_with("iucn_")) %>% names()
 spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
@@ -286,7 +291,6 @@ Using AquaMaps probability ≥ 0.5 [@kleinShortfallsGlobalProtected2015; @oharaA
 
 ```{r calc nspp for all}
 spp_prob_threshold <- 0.5
-dir_out <- here("inst/rasters")
 
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
@@ -329,23 +333,25 @@ plot(r_nspp_all, col = cols, main="Species Richness, All")
 ### Calculate `nspp`, by taxonomic group
 
 ```{r calc nspp by group}
+redo      <- T
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
 spp_cells <- tbl(con, "spp_cells")
 
 spp_groups <- tbl(con, "spp") %>% 
+  arrange(group) %>% 
   distinct(group) %>% 
   pull(group)
 
-for (group in spp_groups){
-  grp <- group_to_grp(group)
-  tif <- (glue("{dir_out}/nspp_{grp}.tif"))
+for (i in seq_along(spp_groups)){
+  group <- spp_groups[i]
+  grp   <- group_to_grp(group)
+  tif   <- (glue("{dir_out}/nspp_{grp}.tif"))
   
-  if (file.exists(tif)) next()
+  if (file.exists(tif) & !redo) next()
   
-  cat(glue("{grp} - {Sys.time()}\n\n"))
-  # group = spp_groups[12] # "Tunas & billfishes" (n=63)
-  
+  cat(glue("{str_pad(i, 2, pad='0')} of {length(spp_groups)}: {grp} - {Sys.time()}\n\n"))
+
   # get species diversity, with default col_cellid="cellid"
   if (is.na(group)){
     spp_grp <- filter(spp, is.na(group))
@@ -439,6 +445,13 @@ if (!"iucn_weight" %in% spp_cols){
     indexes = list("group", "genus_species", "iucn_weight"))
 }
 
+# save spp_csv
+if (!file.exists(spp_csv)){
+  tbl(con, "spp") %>% 
+    collect() %>% 
+    write_csv(spp_csv)
+}
+
 spp_iucn_weight <- tbl(con, "spp") %>% 
   pull(iucn_weight)
 table(spp_iucn_weight, useNA="always")
@@ -484,23 +497,24 @@ plot(r_rls_all, col = cols, main="Red List Sum, All")
 ### Calculate `rls`, by taxonomic group
 
 ```{r calc rls by group}
+redo      <- T
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
 spp_cells <- tbl(con, "spp_cells")
 
 spp_groups <- tbl(con, "spp") %>% 
+  arrange(group) %>% 
   distinct(group) %>% 
   pull(group)
 
-for (group in spp_groups){
-  # group = spp_groups[12] # "Tunas & billfishes" (n=63)
-  # group = spp_groups[2] # NA
-  grp <- group_to_grp(group)
-  tif <- (glue("{dir_out}/rls_{grp}.tif"))
+for (i in seq_along(spp_groups)){
+  group <- spp_groups[i]
+  grp   <- group_to_grp(group)
+  tif   <- (glue("{dir_out}/nspp_{grp}.tif"))
   
-  if (file.exists(tif)) next()
+  if (file.exists(tif) & !redo) next()
   
-  #cat(glue("{grp} - {Sys.time()}\n\n"))
+  cat(glue("{str_pad(i, 2, pad='0')} of {length(spp_groups)}: {grp} - {Sys.time()}\n\n"))
   
   # filter by group
   if (is.na(group)){
