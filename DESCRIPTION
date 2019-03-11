@@ -1,6 +1,6 @@
 Package: gmbi
 Title: global marine biodiversity indicators
-Version: 0.1
+Version: 0.2
 Authors@R: person("Ben", "Best", email = "ben@ecoquants.com", role = c("aut", "cre"))
 Description: Use AquaMaps and ancillary data to build a next-generation set of marine biodiversity indicators.
 Depends: 
@@ -24,4 +24,3 @@ VignetteBuilder: knitr
 RoxygenNote: 6.1.1
 URL: https://github.com/marinebon/gmbi
 BugReports: https://github.com/marinebon/gmbi/issues
-
