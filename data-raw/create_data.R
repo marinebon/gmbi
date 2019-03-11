@@ -1,6 +1,6 @@
 #devtools::install_github("marinebon/gmbi")
 #library(gmbi)
-devtools::load_all("")
+devtools::load_all()
 library(raster)
 library(here)
 library(glue)
