@@ -333,7 +333,7 @@ plot(r_nspp_all, col = cols, main="Species Richness, All")
 ### Calculate `nspp`, by taxonomic group
 
 ```{r calc nspp by group}
-redo      <- T
+redo      <- F
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
 spp_cells <- tbl(con, "spp_cells")
@@ -497,7 +497,7 @@ plot(r_rls_all, col = cols, main="Red List Sum, All")
 ### Calculate `rls`, by taxonomic group
 
 ```{r calc rls by group}
-redo      <- T
+redo      <- F
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
 spp_cells <- tbl(con, "spp_cells")

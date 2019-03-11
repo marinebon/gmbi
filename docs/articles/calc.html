@@ -30,7 +30,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">gmbi</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.0.0.9000</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.2</span>
       </span>
     </div>
 
@@ -57,6 +57,9 @@
     </li>
   </ul>
 </li>
+<li>
+  <a href="../news/index.html">Changelog</a>
+</li>
       </ul>
 <ul class="nav navbar-nav navbar-right">
 <li>
@@ -80,7 +83,7 @@
       <h1>Calculate Indicators</h1>
                         <h4 class="author">Ben Best</h4>
             
-            <h4 class="date">2019-02-27</h4>
+            <h4 class="date">2019-03-11</h4>
       
       <small class="dont-index">Source: <a href="https://github.com/marinebon/gmbi/blob/master/vignettes/calc.Rmd"><code>vignettes/calc.Rmd</code></a></small>
       <div class="hidden name"><code>calc.Rmd</code></div>
@@ -143,10 +146,18 @@ docker logs postgis</code></pre>
 
 <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/library">library</a></span>(devtools); <span class="kw"><a href="https://www.rdocumentation.org/packages/devtools/topics/load_all">load_all</a></span>() <span class="co"># library(gmbi)</span>
 
+<span class="co"># paths</span>
+dir_out      &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/here/topics/here">here</a></span>(<span class="st">"data-raw/rasters"</span>)
+dir_tmp      &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/here/topics/here">here</a></span>(<span class="st">"inst/tmp"</span>)
+spp_iucn_csv &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/here/topics/here">here</a></span>(<span class="st">"data-raw/spp_iucn.csv"</span>)
+spp_csv      &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/here/topics/here">here</a></span>(<span class="st">"data-raw/spp.csv"</span>)
+
+<span class="co"># plotting parameters</span>
 pal &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/grDevices/topics/colorRamp">colorRampPalette</a></span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/RColorBrewer/topics/ColorBrewer">brewer.pal</a></span>(<span class="dv">11</span>, <span class="st">"Spectral"</span>))
 cols &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/rev">rev</a></span>(<span class="kw">pal</span>(<span class="dv">255</span>))
 <span class="kw"><a href="https://www.rdocumentation.org/packages/graphics/topics/par">par</a></span>(<span class="dt">mar=</span><span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/c">c</a></span>(<span class="fl">0.5</span>,<span class="fl">0.5</span>,<span class="fl">0.5</span>,<span class="fl">0.5</span>))
 
+<span class="co"># database connection</span>
 con &lt;-<span class="st"> </span><span class="kw"><a href="../reference/get_db_con.html">get_db_con</a></span>(<span class="dt">password=</span><span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/readLines">readLines</a></span>(<span class="st">"~/private/pg_pass"</span>))
 con</code></pre></div>
 <pre><code>## &lt;PostgreSQLConnection&gt;</code></pre>
@@ -324,9 +335,7 @@ spp_group &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span c
 <h2 class="hasAnchor">
 <a href="#get-extinction-risk-from-iucn" class="anchor"></a>Get extinction risk from IUCN</h2>
 <p>RedList token issued to <a href="mailto:ben@ecoquants.com">ben@ecoquants.com</a> via <a href="http://apiv3.iucnredlist.org/api/v3/token" class="uri">http://apiv3.iucnredlist.org/api/v3/token</a>.</p>
-<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">iucn_csv &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/here/topics/here">here</a></span>(<span class="st">"inst/spp_iucn.csv"</span>)
-
-<span class="cf">if</span> (<span class="op">!</span><span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/files">file.exists</a></span>(iucn_csv)){
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="cf">if</span> (<span class="op">!</span><span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/files">file.exists</a></span>(spp_iucn_csv)){
   
   <span class="co"># speed up get_iucn() by running </span>
   <span class="co"># as multi-threaded process w/ furrr::future_map()</span>
@@ -336,8 +345,7 @@ spp_group &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span c
   <span class="co"># get private IUCN RedList token key</span>
   rl_token &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/readLines">readLines</a></span>(<span class="st">"~/private/iucn_api_key"</span>)
   spp &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">collect</span>()
-  
-  dir_tmp &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/here/topics/here">here</a></span>(<span class="st">"inst/tmp"</span>)
+
   <span class="co"># iterate in chunks of 1000</span>
   n &lt;-<span class="st"> </span><span class="dv">1000</span>
   <span class="cf">for</span> ( i <span class="cf">in</span> <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/seq">seq</a></span>(<span class="dv">1</span>, <span class="kw"><a href="https://www.rdocumentation.org/packages/raster/topics/ncell">nrow</a></span>(spp), <span class="dt">by=</span>n) ){
@@ -368,7 +376,7 @@ spp_group &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span c
   <span class="kw">write_csv</span>(df, csv)
   <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/unlink">unlink</a></span>(dir_tmp, <span class="dt">recursive =</span> T)
 }
-iucn &lt;-<span class="st"> </span><span class="kw">read_csv</span>(iucn_csv)
+iucn &lt;-<span class="st"> </span><span class="kw">read_csv</span>(spp_iucn_csv)
 
 iucn_cols &lt;-<span class="st"> </span>iucn <span class="op">%&gt;%</span><span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/raster/topics/select">select</a></span>(<span class="kw">starts_with</span>(<span class="st">"iucn_"</span>)) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/raster/topics/names">names</a></span>()
 spp_cols &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/raster/topics/headtail">head</a></span>(<span class="dv">1</span>) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">collect</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/raster/topics/names">names</a></span>()
@@ -398,7 +406,6 @@ spp_iucn_category &lt;-<span class="st"> </span><span class="kw">tbl</span>(con,
 <h3 class="hasAnchor">
 <a href="#calculate-nspp-all-taxa" class="anchor"></a>Calculate <code>nspp</code>, all taxa</h3>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">spp_prob_threshold &lt;-<span class="st"> </span><span class="fl">0.5</span>
-dir_out &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/here/topics/here">here</a></span>(<span class="st">"inst/rasters"</span>)
 
 spp       &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>)
 cells     &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"cells"</span>)
@@ -441,23 +448,25 @@ r_nspp_all &lt;-<span class="st"> </span><span class="kw"><a href="https://www.r
 <div id="calculate-nspp-by-taxonomic-group" class="section level3">
 <h3 class="hasAnchor">
 <a href="#calculate-nspp-by-taxonomic-group" class="anchor"></a>Calculate <code>nspp</code>, by taxonomic group</h3>
-<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">spp       &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>)
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">redo      &lt;-<span class="st"> </span>F
+spp       &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>)
 cells     &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"cells"</span>)
 spp_cells &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp_cells"</span>)
 
 spp_groups &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>) <span class="op">%&gt;%</span><span class="st"> </span>
+<span class="st">  </span><span class="kw">arrange</span>(group) <span class="op">%&gt;%</span><span class="st"> </span>
 <span class="st">  </span><span class="kw">distinct</span>(group) <span class="op">%&gt;%</span><span class="st"> </span>
 <span class="st">  </span><span class="kw">pull</span>(group)
 
-<span class="cf">for</span> (group <span class="cf">in</span> spp_groups){
-  grp &lt;-<span class="st"> </span><span class="kw"><a href="../reference/group_to_grp.html">group_to_grp</a></span>(group)
-  tif &lt;-<span class="st"> </span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/glue/topics/glue">glue</a></span>(<span class="st">"{dir_out}/nspp_{grp}.tif"</span>))
+<span class="cf">for</span> (i <span class="cf">in</span> <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/seq">seq_along</a></span>(spp_groups)){
+  group &lt;-<span class="st"> </span>spp_groups[i]
+  grp   &lt;-<span class="st"> </span><span class="kw"><a href="../reference/group_to_grp.html">group_to_grp</a></span>(group)
+  tif   &lt;-<span class="st"> </span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/glue/topics/glue">glue</a></span>(<span class="st">"{dir_out}/nspp_{grp}.tif"</span>))
   
-  <span class="cf">if</span> (<span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/files">file.exists</a></span>(tif)) <span class="cf">next</span>()
+  <span class="cf">if</span> (<span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/files">file.exists</a></span>(tif) <span class="op">&amp;</span><span class="st"> </span><span class="op">!</span>redo) <span class="cf">next</span>()
   
-  <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/cat">cat</a></span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/glue/topics/glue">glue</a></span>(<span class="st">"{grp} - {Sys.time()}</span><span class="ch">\n\n</span><span class="st">"</span>))
-  <span class="co"># group = spp_groups[12] # "Tunas &amp; billfishes" (n=63)</span>
-  
+  <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/cat">cat</a></span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/glue/topics/glue">glue</a></span>(<span class="st">"{str_pad(i, 2, pad='0')} of {length(spp_groups)}: {grp} - {Sys.time()}</span><span class="ch">\n\n</span><span class="st">"</span>))
+
   <span class="co"># get species diversity, with default col_cellid="cellid"</span>
   <span class="cf">if</span> (<span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/NA">is.na</a></span>(group)){
     spp_grp &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rdocumentation.org/packages/stats/topics/filter">filter</a></span>(spp, <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/NA">is.na</a></span>(group))
@@ -559,6 +568,13 @@ spp_cols &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span cl
     <span class="dt">indexes =</span> <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/list">list</a></span>(<span class="st">"group"</span>, <span class="st">"genus_species"</span>, <span class="st">"iucn_weight"</span>))
 }
 
+<span class="co"># save spp_csv</span>
+<span class="cf">if</span> (<span class="op">!</span><span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/files">file.exists</a></span>(spp_csv)){
+  <span class="kw">tbl</span>(con, <span class="st">"spp"</span>) <span class="op">%&gt;%</span><span class="st"> </span>
+<span class="st">    </span><span class="kw">collect</span>() <span class="op">%&gt;%</span><span class="st"> </span>
+<span class="st">    </span><span class="kw">write_csv</span>(spp_csv)
+}
+
 spp_iucn_weight &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>) <span class="op">%&gt;%</span><span class="st"> </span>
 <span class="st">  </span><span class="kw">pull</span>(iucn_weight)
 <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/table">table</a></span>(spp_iucn_weight, <span class="dt">useNA=</span><span class="st">"always"</span>)</code></pre></div>
@@ -605,23 +621,24 @@ r_rls_all &lt;-<span class="st"> </span><span class="kw"><a href="https://www.rd
 <div id="calculate-rls-by-taxonomic-group" class="section level3">
 <h3 class="hasAnchor">
 <a href="#calculate-rls-by-taxonomic-group" class="anchor"></a>Calculate <code>rls</code>, by taxonomic group</h3>
-<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">spp       &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>)
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">redo      &lt;-<span class="st"> </span>F
+spp       &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>)
 cells     &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"cells"</span>)
 spp_cells &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp_cells"</span>)
 
 spp_groups &lt;-<span class="st"> </span><span class="kw">tbl</span>(con, <span class="st">"spp"</span>) <span class="op">%&gt;%</span><span class="st"> </span>
+<span class="st">  </span><span class="kw">arrange</span>(group) <span class="op">%&gt;%</span><span class="st"> </span>
 <span class="st">  </span><span class="kw">distinct</span>(group) <span class="op">%&gt;%</span><span class="st"> </span>
 <span class="st">  </span><span class="kw">pull</span>(group)
 
-<span class="cf">for</span> (group <span class="cf">in</span> spp_groups){
-  <span class="co"># group = spp_groups[12] # "Tunas &amp; billfishes" (n=63)</span>
-  <span class="co"># group = spp_groups[2] # NA</span>
-  grp &lt;-<span class="st"> </span><span class="kw"><a href="../reference/group_to_grp.html">group_to_grp</a></span>(group)
-  tif &lt;-<span class="st"> </span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/glue/topics/glue">glue</a></span>(<span class="st">"{dir_out}/rls_{grp}.tif"</span>))
+<span class="cf">for</span> (i <span class="cf">in</span> <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/seq">seq_along</a></span>(spp_groups)){
+  group &lt;-<span class="st"> </span>spp_groups[i]
+  grp   &lt;-<span class="st"> </span><span class="kw"><a href="../reference/group_to_grp.html">group_to_grp</a></span>(group)
+  tif   &lt;-<span class="st"> </span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/glue/topics/glue">glue</a></span>(<span class="st">"{dir_out}/nspp_{grp}.tif"</span>))
   
-  <span class="cf">if</span> (<span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/files">file.exists</a></span>(tif)) <span class="cf">next</span>()
+  <span class="cf">if</span> (<span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/files">file.exists</a></span>(tif) <span class="op">&amp;</span><span class="st"> </span><span class="op">!</span>redo) <span class="cf">next</span>()
   
-  <span class="co">#cat(glue("{grp} - {Sys.time()}\n\n"))</span>
+  <span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/cat">cat</a></span>(<span class="kw"><a href="https://www.rdocumentation.org/packages/glue/topics/glue">glue</a></span>(<span class="st">"{str_pad(i, 2, pad='0')} of {length(spp_groups)}: {grp} - {Sys.time()}</span><span class="ch">\n\n</span><span class="st">"</span>))
   
   <span class="co"># filter by group</span>
   <span class="cf">if</span> (<span class="kw"><a href="https://www.rdocumentation.org/packages/base/topics/NA">is.na</a></span>(group)){
