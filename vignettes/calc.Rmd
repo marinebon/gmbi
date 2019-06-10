@@ -82,10 +82,12 @@ library(RColorBrewer)
 library(devtools); load_all() # library(gmbi)
 
 # paths
-dir_out      <- here("data-raw/rasters")
 dir_tmp      <- here("inst/tmp")
-spp_iucn_csv <- here("data-raw/spp_iucn.csv")
-spp_csv      <- here("data-raw/spp.csv")
+dir_out      <- here("inst/data/rasters")
+spp_iucn_csv <- here("inst/data/spp_iucn.csv")
+spp_csv      <- here("inst/data/spp.csv")
+dir_nc       <- "~/docker_pg_data/aquamaps2100_nc"
+spp_2100_csv <- "~/docker_pg_data/aquamaps2100_nc.csv"
 
 # plotting parameters
 pal <- colorRampPalette(brewer.pal(11, "Spectral"))
@@ -563,6 +565,225 @@ s_rls <- stack(tifs)
 names(s_rls) <- str_replace(names(s_rls), "rls_", "")
 plot(s_rls, col = cols)
 ```
+
+## Climate Change Forecasts for 2100
+
+The data from forecasting climate change effects on marine species distributions in 2050 using the AquaMaps model [@coroAutomaticClassificationClimate2016] were made publicly available through the server http://thredds.d4science.org and linked from AquaMaps species profiles. 
+
+TODO: resolve MISMATCH: 
+- [@coroAutomaticClassificationClimate2016]: 2050
+- Aquamaps.org: 2100
+
+To investigate accessing these data layers via iMarine, I logged into https://i-marine.d4science.org/group/biodiversitylab and see this entry:
+
+> Gianpaolo Coro Dear VRE Members,the AquaMaps Web site is now officially linked to D4Science! All automatically generated maps have links to download content in NetCDF format through D4Science and to interactively inspect the maps trough Web applications hosted by the e-Infrastructure. A total of 24,935 AquaMaps NetCDF files were produced for both today and 2100 through the DataMiner "Csv To NetCDF" conversion algorithms. 
+Please, click on the link below to see an example for yellowback anthias and follow the "NetCDF" and the "view in Godiva" links on the page. 
+>
+> https://www.aquamaps.org/preMap2.php?cache=1&SpecID=Fis-10199
+
+Following this link leads to:
+
+http://thredds.d4science.org/thredds/fileServer/public/netcdf/AquaMaps_08_2016/Pseudanthias_evansi.nc
+
+- Computer Generated Native Distribution Map for {sp}, with modelled year 2100 native range map based on IPCC A2 emissions scenario
+- **Cite this set of maps as**: Computer generated distribution maps for _{Genus} {species}_ ({common}), with modelled year 2100 native range map based on IPCC A2 emissions scenario. www.aquamaps.org, version of Aug. 2016. Web. Accessed 10 Jun. 2019. 
+
+
+```{r}
+library(raster)
+library(glue)
+library(here)
+
+get_am2100nc <- function(sp, nc){
+  # sp <- "Acanthopagrus_berda"
+  # nc <- file.path(dir_nc, basename(url)) # unlink(nc)
+  
+  # get netcdf file
+  url <- glue("http://thredds.d4science.org/thredds/fileServer/public/netcdf/AquaMaps_08_2016/{sp}.nc")
+  
+  if (file.exists(nc)) return (glue("{sp}: already exists"))
+  tryCatch(
+    download.file(url, nc, mode = "wb", quiet = T),
+    error=function(e) e)
+  return (glue("{sp}: {ifelse(file.exists(nc), 'downloaded', 'missing')}"))
+    #spp_2100 <- spp_2100 %>% 
+    #  mutate(
+    #    downloaded = ifelse(sp_str == sp, file.exists(nc), downloaded))
+    # head(spp_2100)
+  #sp_downloaded <- filter(spp_2100, sp_str == sp) %>% pull(downloaded)
+  #return(glue("{sp}: {sp_downloaded}"))
+}
+
+if (!file.exists(spp_2100_csv)){
+  # get all species
+  spp_2100 <- spp %>% 
+    select(SPECIESID, Genus, Species) %>% 
+    collect() %>% 
+    mutate(
+      sp_str     = glue("{Genus}_{Species}"),
+      path_nc    = glue("{dir_nc}/{sp_str}.nc"),
+      downloaded = NA) %>% 
+    arrange(sp_str) # n= 24,894
+
+  plan(multiprocess)
+  
+  # iterate in chunks of 1000
+  n <- 1000
+  for ( i in seq(1, nrow(spp_2100), by=n) ){ # i = 1
+    
+    i_beg <- i
+    i_end <- i - 1 + n
+    csv <- glue("{dirname(dir_nc)}/spp_2100_{str_pad(i_beg, 5, 'left', '0')}-{str_pad(i_end, 5, 'left', '0')}.csv")
+    cat(glue("{basename(csv)} - {Sys.time()}\n\n"))
+    
+    # speed up fetching by running in parallel
+    future_map2_chr(
+      spp_2100$sp_str[i_beg:i_end], 
+      spp_2100$path_nc[i_beg:i_end],
+      get_am2100nc)
+    
+    # record species searched and not found
+    spp_i <- slice(spp_2100, i_beg:i_end) %>%  
+      mutate(
+        downloaded = file.exists(path_nc)) # View(spp_i)
+    write_csv(spp_i, csv)
+  }
+  
+  # combine temporary csvs
+  csvs <- list.files(dirname(dir_nc), "*\\.csv", full.names = T)
+  spp_df <- map_df(csvs, read_csv) %>% dplyr::bind_rows() %>% 
+    filter(!duplicated(sp_str))
+  write_csv(spp_df, spp_2100_csv)
+  unlink(csvs)
+}
+
+# quickfix
+# spp_df2 <- spp_df %>% 
+#   left_join(
+#     spp_2100 %>% 
+#       select(sp_str, SPECIESID),
+#     by="sp_str") %>% 
+#   select(SPECIESID, Genus, Species, sp_str, path_nc, downloaded)
+# write_csv(spp_df2, spp_2100_csv)
+
+
+if (!"spp_cells_2100" %in% dbListTables(con)){
+  
+  dbExecute(con, 'CREATE TABLE spp_cells_2100 (
+  speciesid text,
+  cellid int4,
+  probability float8);
+  CREATE UNIQUE INDEX idx_spp_cells_2100_unique ON spp_cells_2100 (speciesid, cellid);')
+  
+  r_na   <- raster_na()
+  spp_df <- read_csv(spp_2100_csv) %>% 
+    filter(downloaded) # 24,831
+  
+  #for (i in 1:nrow(spp_df)){ # i = 1087
+  for (i in 18009:nrow(spp_df)){ # i = 18009
+    if (i %% 1000 == 0) cat(glue("{sprintf('%06d',i)} - {Sys.time()}\n\n"))
+    
+    nc    <- spp_df$path_nc[i]
+    sp_id <- spp_df$SPECIESID[i]
+    
+    #r <- raster(nc, varname="probability")
+    r <- tryCatch(raster(nc, varname="probability"),
+      error = function(e) cat(glue(
+        "  can't read {sprintf('%06d',i)} {sp_id} {basename(nc)} - {Sys.time()}\n\n")))
+    if (is.null(r)) next
+    
+    tryCatch(
+      compareRaster(
+        r, r_na, 
+        extent=F, rowcol=F, 
+        crs=T, res=T, orig=T, rotation=T),
+      error = function(e) cat(glue(
+        "  mismatch {sprintf('%06d',i)} {sp_id} {basename(nc)} - {Sys.time()}\n\n")))
+    # i = 1087  # 2019-06-10 00:03:23
+    # Error in compareRaster(): different resolution
+    #   extent      : -81, -78, -37.5, -15  (xmin, xmax, ymin, ymax)
+    #   data source : /Users/bbest/docker_pg_data/aquamaps2100_nc/Amphichaetodon_melbae.nc 
+    # mismatch 001087 Fis-33857 Amphichaetodon_melbae.nc - 2019-06-10 00:15:56
+    # mismatch 001433 URM-2-1014 Anoplodactylus_laminifer.nc - 2019-06-10 00:17:01
+    # mismatch 003352 Fis-144824 Bovichtus_veneris.nc - 2019-06-10 00:23:45
+    # mismatch 004814 NZ-24280 Charitometra_incisa.nc - 2019-06-10 00:28:13
+    # mismatch 005270 Fis-60663 Chromis_pamae.nc - 2019-06-10 00:29:39
+    # mismatch 007885 Fis-147877 Ebinania_macquariensis.nc - 2019-06-10 00:37:37
+    # mismatch 009752 Fis-27991 Genicanthus_semicinctus.nc - 2019-06-10 00:42:44
+    # mismatch 009852 Fis-134861 Girella_albostriata.nc - 2019-06-10 00:43:03
+    # mismatch 011115 URM-2-3593 Heterostigma_singulare.nc - 2019-06-10 00:46:36
+    # mismatch 011989 ITS-552955 Jasus_paulensis.nc - 2019-06-10 00:49:06
+    # mismatch 012027 W-Iso-256075 Joeropsis_sanctipauli.nc - 2019-06-10 00:49:11
+    # mismatch 014326 SLB-142070 Microdictyon_okamurae.nc - 2019-06-10 00:55:57
+    # mismatch 015881 Fis-168180 Novaculops_koteamea.nc - 2019-06-10 06:00:43
+    # mismatch 016386 Fis-130905 Ophichthus_kunaloa.nc - 2019-06-10 06:02:24
+    # mismatch 016430 Fis-133519 Ophidion_metoecus.nc - 2019-06-10 06:02:30
+    # mismatch 017495 Fis-123220 Parapercis_dockinsi.nc - 2019-06-10 06:05:43
+    # mismatch 020940 Fis-153727 Scartella_poiti.nc - 2019-06-10 07:21:30
+    # mismatch 020942 Fis-61194 Scartichthys_variolatus.nc - 2019-06-10 07:21:30
+    # mismatch 022003 Fis-164212 Sparisoma_rocha.nc - 2019-06-10 07:24:20
+    # mismatch 023107 URM-2-336 Tanystylum_beuroisi.nc - 2019-06-10 07:27:33
+    
+    # i = 17793 Patagonotothen_sima.nc
+    # Error in .local(x, ...) : min and max x are the same
+    # 128-111-61-209:aquamaps2100_nc bbest$ gdalinfo Patagonotothen_sima.nc
+    # Warning 1: No UNIDATA NC_GLOBAL:Conventions attribute
+    # Driver: netCDF/Network Common Data Format
+    # Files: Patagonotothen_sima.nc
+    # Size is 512, 512
+    # Coordinate System is `'
+    # Subdatasets:
+    #   SUBDATASET_1_NAME=NETCDF:"Patagonotothen_sima.nc":probability
+    #   SUBDATASET_1_DESC=[107x66] probability (64-bit floating-point)
+    #   SUBDATASET_2_NAME=NETCDF:"Patagonotothen_sima.nc":faoareayn
+    #   SUBDATASET_2_DESC=[107x66] faoareayn (32-bit integer)
+    #   SUBDATASET_3_NAME=NETCDF:"Patagonotothen_sima.nc":boundboxyn
+    #   SUBDATASET_3_DESC=[107x66] boundboxyn (32-bit integer)
+    # Corner Coordinates:
+    # Upper Left  (    0.0,    0.0)
+    # Lower Left  (    0.0,  512.0)
+    # Upper Right (  512.0,    0.0)
+    # Lower Right (  512.0,  512.0)
+    # Center      (  256.0,  256.0)
+    # can't read 17793 ? Patagonotothen_sima.nc
+    # can't read 018009 ITS-612391 Periclimenes_brevicarpalis.nc - 2019-06-10 07:12:45
+    # can't read 018176 W-Por-246569 Phakellia_columnata.nc - 2019-06-10 07:13:18
+    # can't read 018009 ITS-612391 Periclimenes_brevicarpalis.nc - 2019-06-10 07:12:45
+    # can't read 018176 W-Por-246569 Phakellia_columnata.nc - 2019-06-10 07:13:18
+
+    #r <- extend(r, r_na)
+    r <- raster::projectRaster(r, r_na)
+    d <- tibble(
+      speciesid = sp_id,
+      probability = raster::values(r)) %>% 
+      tibble::rowid_to_column(var = "cellid") %>% 
+      filter(!is.na(probability))
+    
+    #dbExecute(con, glue("DELETE FROM spp_cells_2100;"))
+    dbExecute(con, glue("DELETE FROM spp_cells_2100 WHERE SpeciesID='{sp_id}';"))
+    dbWriteTable(con, "spp_cells_2100", d, append=T, row.names=F)
+  }
+  # i = 1
+}  
+
+
+
+# load into db ----
+# prob_Coro2016
+
+# plot to check ok
+#plot(r)
+
+
+# read netcdf into raster
+r <- raster(nc, varname = "probability")
+#}
+
+
+
+
+```
+
 
 ```{r}
 ## TODO: Archive db
