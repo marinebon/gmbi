@@ -1,7 +1,8 @@
 #' Global marine biodiversity indicators from AquaMaps and IUCN
 #'
 #' Raster stack containing global half-degree rasters with species richness
-#' (\code{nspp_\*}) and Red List Sum (\code{rls_\*}).
+#' (\code{nspp_\*}) and Red List Sum (\code{rls_\*}) for current distributions
+#' and 2100 based on IPCC A2 emissions scenario.
 #'
 #' @format A \code{\link[raster]{stack}} with indicator (\code{nspp_*} or
 #'   \code{rls_\*}) and taxonomic group or taxa (\code{\*_all}).

@@ -379,7 +379,7 @@ for (i in seq_along(spp_groups)){
       nspp = n()) %>% 
     collect()
   r_grp <- df_to_raster(cells_nspp, "nspp", tif)
-  plot(r_grp, col = cols, main=glue("n_spp {group}"))
+  plot(r_grp, col = cols, main=glue("nspp {group}"))
 }
 
 # get all tifs, except first one "nspp_all.tif"
@@ -419,7 +419,7 @@ Weights used for Red List Sum (RLS) indicator:
 
 Note that only 1 species is listed as extinct (EX) or extinct in the wild (EW). Since the species is no longer considered present, protection is assumed to not afford any conservation value.
 
- ### Set `iucn_weight` to species
+### Set `iucn_weight` to species
 
 ```{r set spp iucn_weight}
 iucn_category_weights = c(
@@ -512,7 +512,7 @@ spp_groups <- tbl(con, "spp") %>%
 for (i in seq_along(spp_groups)){
   group <- spp_groups[i]
   grp   <- group_to_grp(group)
-  tif   <- (glue("{dir_out}/nspp_{grp}.tif"))
+  tif   <- (glue("{dir_out}/rls_{grp}.tif"))
   
   if (file.exists(tif) & !redo) next()
   
@@ -774,12 +774,11 @@ if (!"spp_cells_2100" %in% dbListTables(con)){
 
 #### Calculate `nspp`, all taxa
 
-```{r calc nspp for all}
+```{r calc nspp 2100 for all}
 spp_prob_threshold <- 0.5
 
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
-#spp_cells <- tbl(con, "spp_cells")
 spp_cells <- tbl(con, "spp_cells_2100")
 
 tif <- (glue("{dir_out}/nspp_all_2100.tif"))
@@ -790,49 +789,36 @@ if (!file.exists(tif)){
   cells_nspp <- spp_cells %>% 
     filter(
       probability >= spp_prob_threshold) %>% 
-    left_join(cells, by=c("CenterLat","CenterLong")) %>% 
     group_by(cellid) %>% 
     summarize(
       nspp = n()) %>% 
     collect()
-  r_nspp_all <- df_to_raster(cells_nspp, "nspp", tif)
+  r_nspp_all_2100 <- df_to_raster(cells_nspp, "nspp", tif)
 }
 
-if (!file.exists(tif)){
-  # OR get species richness, with cols_lonlat=c("CenterLat","CenterLong")
-  cells_nspp <- spp_cells %>% 
-    filter(
-      probability >= spp_prob_threshold) %>% 
-    group_by(CenterLat, CenterLong) %>% 
-    summarize(
-      nspp = n()) %>% 
-    collect()
-  r_nspp_all <- df_to_raster(
-    cells_nspp, "nspp", tif, 
-    col_cellid=NULL, cols_lonlat=c("CenterLat","CenterLong"))
-}
-r_nspp_all <- raster(tif)
+r_nspp_all_2100 <- raster(tif)
 
-plot(r_nspp_all, col = cols, main="Species Richness, All")
+plot(r_nspp_all_2100, col = cols, main="Species Richness, All 2100")
 ```
 
 #### Calculate `nspp`, by taxonomic group
 
-```{r calc nspp by group}
+```{r calc nspp 2100 by group}
 redo      <- F
+#options(warn=2) # error on warning
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
-spp_cells <- tbl(con, "spp_cells")
+spp_cells <- tbl(con, "spp_cells_2100")
 
 spp_groups <- tbl(con, "spp") %>% 
   arrange(group) %>% 
   distinct(group) %>% 
   pull(group)
 
-for (i in seq_along(spp_groups)){
+for (i in seq_along(spp_groups)){ # i = 1
   group <- spp_groups[i]
   grp   <- group_to_grp(group)
-  tif   <- (glue("{dir_out}/nspp_{grp}.tif"))
+  tif   <- (glue("{dir_out}/nspp_{grp}_2100.tif"))
   
   if (file.exists(tif) & !redo) next()
   
@@ -845,158 +831,85 @@ for (i in seq_along(spp_groups)){
     spp_grp <- filter(spp, group == !!group)
   }
   
-  cells_nspp <- spp_grp %>% 
+  cells_nspp_2100 <- spp_grp %>% 
     select(SPECIESID) %>% 
     left_join(
       spp_cells %>% 
         select(
-          SpeciesID, probability,
-          CenterLat, CenterLong) %>% 
+          speciesid, cellid, probability) %>% 
         filter(
           probability >= spp_prob_threshold), 
-      by=c("SPECIESID"="SpeciesID")) %>% 
-    left_join(
-      cells, 
-      by=c("CenterLat","CenterLong")) %>% 
+      by=c("SPECIESID"="speciesid")) %>% 
     group_by(cellid) %>% 
     summarize(
       nspp = n()) %>% 
     collect()
-  r_grp <- df_to_raster(cells_nspp, "nspp", tif)
-  plot(r_grp, col = cols, main=glue("n_spp {group}"))
+  r_grp_2100 <- df_to_raster(cells_nspp_2100, "nspp", tif)
+  plot(r_grp_2100, col = cols, main=glue("nspp {group} 2100"))
 }
 
-# get all tifs, except first one "nspp_all.tif"
-tifs <- list.files(dir_out, "^nspp_.*.tif$", full.names = T)[-1]
-s_nspp <- stack(tifs)
-names(s_nspp) <- str_replace(names(s_nspp), "nspp_", "")
-plot(s_nspp, col = cols)
+# get all tifs, except first one "nspp_all_2100.tif"
+tifs   <- list.files(dir_out, "^nspp_.*_2100\\.tif$", full.names = T)[-1]
+s_nspp_2100 <- stack(tifs)
+names(s_nspp_2100) <- names(s_nspp_2100) %>% 
+  str_replace("nspp_", "") %>% 
+  str_replace("_2100", "")
+plot(s_nspp_2100, col = cols)
 ```
 
 ### Calculate extinction risk
 
-The Red List Index ([@butchartImprovementsRedList2007] et al. 2007) is summarized [@juslenApplicationRedList2016] as:
-
-  > The RLI [Red List Index] value was calculated by multiplying the number of taxa in each red-list category by the category weight (0 for LC, 1 for NT, 2 for VU, 3 for EN, 4 for CR, 5 for RE/EX). These products were summed and then divided by the number of taxa multiplied by the maximum weight 5 (“maximum possible denominator”). To obtain the RLI value, this sum is subtracted from 1. The index value varies between 0 and 1 (Butchart et al. 2007). The lower the value, the closer the set of taxa is heading towards extinction. If the value is 0 all the taxa are (regionally) extinct. If the value is 1 all the taxa are assessed as Least Concern.
-
-We will use simply the numerator, the Red List Sum (RLS), of the Red List Index (RLI) to quantify the "endangeredness" of a cell without dilution from being in a species-rich place as the RLI does when averaging the extinction risk for all assessed species.
-
-$$RLS = \sum_{i=1}^{n_{spp}} w_i$$
-$$RLI = 1 - \frac{RLS}{n_{spp} * max(w)}$$
-
-- [IUCN Red List | Wikipedia](https://en.wikipedia.org/wiki/IUCN_Red_List)
-- [Search | IUCN Red List](https://www.iucnredlist.org/search/stats)
-
-Weights used for Red List Sum (RLS) indicator:
-
-- **DD**: `NA` - Data Deficient
-- **LC**: `0` - Least Concern
-- **LR/lc**: `0` - Lower Risk, least concern (1994 category)
-- **NT**: `1` - Near Threatened
-- **LR/cd**: `1` - Lower Risk, conservation dependent (1994 category)
-- **LR/nt**: `1` - Lower Risk, near threatened (1994 category)
-- **VU**: `2` - VUlnerable
-- **EN**: `3` - ENdangered
-- **CR**: `4` - CRitically endangered
-- **EW**: `NA` (\*not `5`) - Extinct in the Wild (n=0)
-- **EX**: `NA` (\*not `5`) - EXtinct (n=1)
-
-Note that only 1 species is listed as extinct (EX) or extinct in the wild (EW). Since the species is no longer considered present, protection is assumed to not afford any conservation value.
-
- ### Set `iucn_weight` to species
-
-```{r set spp iucn_weight}
-iucn_category_weights = c(
-  DD=NA, 
-  LC=0, `LR/lc`=0, 
-  NT=1, `LR/cd`=1, `LR/nt`=1, 
-  VU=2, 
-  EN=3, 
-  CR=4, 
-  EW=NA,
-  EX=NA)
-
-spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
-
-if (!"iucn_weight" %in% spp_cols){
-  
-  spp <- tbl(con, "spp") %>% 
-    collect() %>% 
-    mutate(
-      iucn_weight = recode(iucn_category, !!!iucn_category_weights))
-  
-  copy_to(
-    con, spp, "spp", temporary=F, overwrite=T,
-    unique_indexes=list("SPECIESID"),
-    indexes = list("group", "genus_species", "iucn_weight"))
-}
-
-# save spp_csv
-if (!file.exists(spp_csv)){
-  tbl(con, "spp") %>% 
-    collect() %>% 
-    write_csv(spp_csv)
-}
-
-spp_iucn_weight <- tbl(con, "spp") %>% 
-  pull(iucn_weight)
-table(spp_iucn_weight, useNA="always")
-```
-
 #### Calculate `rls`, all taxa
 
-```{r calc rls for all}
+```{r calc rls 2100 for all}
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
-spp_cells <- tbl(con, "spp_cells")
+spp_cells <- tbl(con, "spp_cells_2100")
 
-tif <- (glue("{dir_out}/rls_all.tif"))
+tif <- (glue("{dir_out}/rls_all_2100.tif"))
 
 if (!file.exists(tif)){
   
   # calculate RedList sum of weights
-  cells_rls <- spp %>% 
+  cells_rls_2100 <- spp %>% 
     filter(
       !is.na(iucn_weight), 
       iucn_weight != 0) %>% 
     left_join(
       spp_cells %>% 
         select(
-          SpeciesID, probability,
-          CenterLat, CenterLong) %>% 
+          speciesid, cellid, probability) %>% 
         filter(
           probability >= spp_prob_threshold), 
-      by=c("SPECIESID"="SpeciesID")) %>% 
-    left_join(
-      cells, by=c("CenterLat","CenterLong")) %>% 
+      by=c("SPECIESID"="speciesid")) %>% 
     group_by(cellid) %>% 
     summarize(
-      rls = sum(iucn_weight)) %>% 
+      rls = sum(iucn_weight, na.rm=T)) %>% 
     collect()
-  r_rls_all <- df_to_raster(cells_rls, "rls", tif)
+  r_rls_all_2100 <- df_to_raster(cells_rls_2100, "rls", tif)
 }
 
-r_rls_all <- raster(tif)
-plot(r_rls_all, col = cols, main="Red List Sum, All")
+r_rls_all_2100 <- raster(tif)
+plot(r_rls_all_2100, col = cols, main="Red List Sum, All 2100")
 ```
 
 #### Calculate `rls`, by taxonomic group
 
-```{r calc rls by group}
+```{r calc rls 2100 by group}
 redo      <- F
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
-spp_cells <- tbl(con, "spp_cells")
+spp_cells <- tbl(con, "spp_cells_2100")
 
 spp_groups <- tbl(con, "spp") %>% 
   arrange(group) %>% 
   distinct(group) %>% 
   pull(group)
 
-for (i in seq_along(spp_groups)){
+for (i in seq_along(spp_groups)){ # i = 1
   group <- spp_groups[i]
   grp   <- group_to_grp(group)
-  tif   <- (glue("{dir_out}/nspp_{grp}.tif"))
+  tif   <- (glue("{dir_out}/rls_{grp}_2100.tif"))
   
   if (file.exists(tif) & !redo) next()
   
@@ -1016,38 +929,37 @@ for (i in seq_along(spp_groups)){
     collect()
   
   if (nrow(spp_grp_w) == 0){
-    #cat(glue("  all iucn_weight == NA\n", .trim=F))
+    cat(glue("  all iucn_weight == NA\n", .trim=F))
   } else {
     # calculate RedList sum of weights
-    cells_rls <- spp_grp %>% 
+    cells_rls_2100 <- spp_grp %>% 
       filter(
         !is.na(iucn_weight), 
         iucn_weight != 0) %>% 
       left_join(
         spp_cells %>% 
           select(
-            SpeciesID, probability,
-            CenterLat, CenterLong) %>% 
+            speciesid, cellid, probability) %>% 
           filter(
             probability >= spp_prob_threshold), 
-        by=c("SPECIESID"="SpeciesID")) %>% 
-      left_join(
-        cells, by=c("CenterLat","CenterLong")) %>% 
+        by=c("SPECIESID"="speciesid")) %>% 
       group_by(cellid) %>% 
       summarize(
-        rls = sum(iucn_weight)) %>% 
+        rls = sum(iucn_weight, na.rm = T)) %>% 
       collect()
     
-    r_grp <- df_to_raster(cells_rls, "rls", tif) 
-    plot(r_grp, col = cols, main=glue("Red List Sum, {group}"))
+    r_grp_2100 <- df_to_raster(cells_rls_2100, "rls", tif) 
+    plot(r_grp_2100, col = cols, main=glue("Red List Sum, {group} 2100"))
   }
 }
 
-# get all tifs, except first one "nspp_all.tif"
-tifs <- list.files(dir_out, "^rls_.*.tif$", full.names = T)[-1]
-s_rls <- stack(tifs)
-names(s_rls) <- str_replace(names(s_rls), "rls_", "")
-plot(s_rls, col = cols)
+# get all tifs, except first one "rls_all_2100.tif"
+tifs   <- list.files(dir_out, "^rls_.*_2100\\.tif$", full.names = T)[-1]
+s_rls_2100 <- stack(tifs)
+names(s_rls_2100) <- names(s_rls_2100) %>% 
+  str_replace("rls_", "") %>% 
+  str_replace("_2100", "")
+plot(s_rls_2100, col = cols)
 ```
 
 

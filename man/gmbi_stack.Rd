@@ -18,6 +18,7 @@ gmbi_stack
 }
 \description{
 Raster stack containing global half-degree rasters with species richness
-(\code{nspp_\*}) and Red List Sum (\code{rls_\*}).
+(\code{nspp_\*}) and Red List Sum (\code{rls_\*}) for current distributions
+and 2100 based on IPCC A2 emissions scenario.
 }
 \keyword{datasets}

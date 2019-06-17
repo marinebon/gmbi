@@ -14,6 +14,8 @@
 #' @examples
 df_to_raster <- function(df, col_value="value", tif=NULL, col_cellid="cellid", cols_lonlat = NULL){
 
+  # df=cells_nspp_2100; col_value="nspp"; tif=tif; col_cellid="cellid"; cols_lonlat = NULL
+
   library(raster)
   library(dplyr)
   library(readr)
@@ -43,10 +45,16 @@ df_to_raster <- function(df, col_value="value", tif=NULL, col_cellid="cellid", c
     dplyr::rename(
       cellid = !!col_cellid,
       value  = !!col_value) %>%
+    dplyr::filter(
+      !is.na(cellid),
+      !is.na(value)) %>%
     dplyr::select(cellid, value)
 
   # assign to raster
   r <- raster_na()
+  #browser()
+  #sum(!raster::validCell(r, df$cellid))
+  #df$cellid[!raster::validCell(r, df$cellid)]
   r[df$cellid] <- df$value
 
   # write raster
