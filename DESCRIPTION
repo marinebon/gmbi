@@ -1,6 +1,6 @@
 Package: gmbi
 Title: global marine biodiversity indicators
-Version: 0.2
+Version: 0.3
 Authors@R: person("Ben", "Best", email = "ben@ecoquants.com", role = c("aut", "cre"))
 Description: Use AquaMaps and IUCN RedList data to build a next-generation set of marine biodiversity indicators.
 Depends: 
