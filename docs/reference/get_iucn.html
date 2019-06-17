@@ -147,25 +147,7 @@
 
     <h2 class="hasAnchor" id="examples"><a class="anchor" href="#examples"></a>Examples</h2>
     <pre class="examples"><div class='input'><span class='no'>rl_token</span> <span class='kw'>&lt;-</span> <span class='fu'><a href='https://www.rdocumentation.org/packages/base/topics/readLines'>readLines</a></span>(<span class='st'>"~/private/iucn_api_key"</span>)
-<span class='fu'>rl_search</span>(<span class='st'>"Megaptera novaeangliae"</span>, <span class='kw'>key</span><span class='kw'>=</span><span class='no'>rl_token</span>)</div><div class='output co'>#&gt; $name
-#&gt; [1] "Megaptera novaeangliae"
-#&gt; 
-#&gt; $result
-#&gt;   taxonid        scientific_name  kingdom   phylum    class           order
-#&gt; 1   13006 Megaptera novaeangliae ANIMALIA CHORDATA MAMMALIA CETARTIODACTYLA
-#&gt;            family     genus main_common_name        authority published_year
-#&gt; 1 BALAENOPTERIDAE Megaptera   Humpback Whale (Borowski, 1781)           2018
-#&gt;   assessment_date category criteria population_trend marine_system
-#&gt; 1      2018-03-24       LC       NA       Increasing          TRUE
-#&gt;   freshwater_system terrestrial_system    assessor
-#&gt; 1             FALSE              FALSE Cooke, J.G.
-#&gt;                                                       reviewer aoo_km2 eoo_km2
-#&gt; 1 Clapham, P.J., Taylor, B.L., Reeves, R. &amp; Brownell Jr., R.L.      NA      NA
-#&gt;   elevation_upper elevation_lower depth_upper depth_lower errata_flag
-#&gt; 1              NA              NA          NA          NA          NA
-#&gt;   errata_reason amended_flag amended_reason
-#&gt; 1            NA           NA             NA
-#&gt; </div></pre>
+<span class='fu'>rl_search</span>(<span class='st'>"Megaptera novaeangliae"</span>, <span class='kw'>key</span><span class='kw'>=</span><span class='no'>rl_token</span>)</div><div class='output co'>#&gt; <span class='error'>Error in rl_search("Megaptera novaeangliae", key = rl_token): could not find function "rl_search"</span></div></pre>
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="sidebar">
     <h2>Contents</h2>

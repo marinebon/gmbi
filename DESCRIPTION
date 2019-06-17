@@ -2,24 +2,15 @@ Package: gmbi
 Title: global marine biodiversity indicators
 Version: 0.2
 Authors@R: person("Ben", "Best", email = "ben@ecoquants.com", role = c("aut", "cre"))
-Description: Use AquaMaps and ancillary data to build a next-generation set of marine biodiversity indicators.
+Description: Use AquaMaps and IUCN RedList data to build a next-generation set of marine biodiversity indicators.
 Depends: 
   R (>= 3.5.2),
-  dplyr,
-  readr,
-  glue,
-  here,
-  DBI,
-  RPostgreSQL,
-  raster,
-  leaflet,
-  rredlist
-License: What license is it under?
+  raster
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Suggests: 
-  knitr,
-  rmarkdown
+  raster
 VignetteBuilder: knitr
 RoxygenNote: 6.1.1
 URL: https://github.com/marinebon/gmbi

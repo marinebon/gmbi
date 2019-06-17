@@ -5,20 +5,24 @@ library(raster)
 library(here)
 library(glue)
 
-# TODO: + store in data-raw so could look at with software external to R, eg QGIS
-
-# TODO: clip to high seas
-
 # TODO: use data(package="gmbi") in future
 dir_tifs <- here("inst/data/rasters")
 
 tifs <- list.files(dir_tifs, glue(".*\\.tif$"), full.names = T)
 
-gmbi_indicators <- raster::stack(tifs)
+gmbi_stack <- raster::stack(tifs)
 # load into memory so not referencing local file and use_data() works
 #raster(gmbi_indicators, layer=10)
-gmbi_indicators <- raster::readAll(gmbi_indicators)
-usethis::use_data(gmbi_indicators, overwrite = TRUE) # WHOAH, really only 752.4 KB?
+gmbi_stack <- raster::readAll(gmbi_stack)
+usethis::use_data(gmbi_stack, overwrite = TRUE) # WHOAH, really only 752.4 KB?
+
+# spp ----
+spp <- read_csv(here("inst/data/spp.csv"))
+usethis::use_data(spp, overwrite = TRUE)
+
+# spp_iucn ----
+spp_iucn <- read_csv(here("inst/data/spp_iucn.csv"))
+usethis::use_data(spp_iucn, overwrite = TRUE)
 
 # old ----
 # perhaps revisit code below to programmatically use_data() on separate indicators and _all/_grps

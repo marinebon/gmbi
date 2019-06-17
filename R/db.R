@@ -24,6 +24,7 @@ get_db_con <- function(
   library(DBI)
   library(RPostgreSQL)
 
+  # psql -U admin -W -h localhost -d am
   DBI::dbConnect(
     drv      = RPostgreSQL::PostgreSQL(),
     host     = host,
