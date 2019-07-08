@@ -141,17 +141,17 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
 
 - Primarily coastal species [@tittensorGlobalPatternsPredictors2010]
     - **Coastal fishes**: `Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
-    - Non-oceanic sharks: TODO with `rredlist::rl_habitats()`
-    - **Non-squid cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida")`
+    - Non-oceanic sharks
+    - **Non-squid cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida")`
     - **Pinnipeds**: `Family %in% c("Odobenidae", "Otariidae", "Phocidae")`
     - **Corals**: `Class == "Anthozoa"` (soft/hard + anemones + gorgonians)
     - **Seagrasses**: `Order == "Alismatales"`
     - **Mangroves**: `Genus == "Avicennia" & Species == "germinans"` (n=1)
 - Primarily oceanic species [@tittensorGlobalPatternsPredictors2010]
     - **Tunas and billfishes**: `Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
-    - Oceanic sharks: TODO with `rredlist::rl_habitats()`
+    - Oceanic sharks
     - **Squids**:  `Order %in% c("Myopsida","Oegopsida")`
-    - **Cetaceans**: `Order == "Artiodactyla"`
+    - **Cetaceans**: `Order == "Cetacea"`
     - **Euphausiids**: `Order == "Euphausiacea"`
     - Foraminifera: n=0 for Phylum=Retaria
 - Others (Phylum - Class)
@@ -167,16 +167,25 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
         - Squids
     - Chordata
         - **Tunicates**: `Class %in% c("Ascidiacea","Thaliacea")`
-        - **Sharks**: `Class == "Elasmobranchii"` (actually Class=Chondrichthyes, Subclass=Elasmobranchii)
+        - **Sharks & Rays**: `Class == "Elasmobranchii"` (actually Class=Chondrichthyes, Subclass=Elasmobranchii)
         - **Reptiles**: `Class == "Reptilia"` crocodiles, sea snakes & sea turtles
     - **Echinoderms**: `Phylum == "Echinodermata"`
     - **Sponges**: `Phylum == "Porifera"`
-    - **Worms**: `Phylum == "Annelida"`
+    - **Worms**: `Phylum %in% c("Annelida", "Sipuncula")`
     - Cnidaria
         - **Hydrozoans**: `Class == "Hydrozoa"`
+    - **Foraminifera**: `Phylum == "Foraminifera"`
 
 ```{r set spp groups, eval=F}
 spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
+
+
+# group = NA: 1176
+# library(tidyverse)
+# read_csv("~/Gdrive Ecoquants/projects/High Seas MPAs/bbnj/data/raw/AquaMaps/spp.csv") %>% 
+#   filter(is.na(group)) %>% 
+#   nrow()
+
 
 if (!"group" %in% spp_cols){
 
@@ -190,8 +199,8 @@ if (!"group" %in% spp_cols){
         Order == "Alismatales" ~ "Seagrasses",
         Genus == "Avicennia" & Species == "germinans" ~ "Mangroves",
         Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Tunas & billfishes",
-        Order %in% c("Myopsida","Oegopsida") ~ "Squids",
-        Order == "Artiodactyla" ~ "Cetaceans",
+        Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Squids",
+        Order == "Cetacea" ~ "Cetaceans",
         Order == "Euphausiacea" ~ "Euphausiids",
         Class %in% c("Malacostraca","Ostracoda","Branchiopoda","Cephalocarida","Maxillopoda") ~ "Crustaceans",
         Class == "Pycnogonida" ~ "Sea spiders",
@@ -199,12 +208,13 @@ if (!"group" %in% spp_cols){
         Class == "Bivalvia" ~ "Bivalves",
         Class == "Polyplacophora" ~ "Chitons",
         Class %in% c("Ascidiacea","Thaliacea") ~ "Tunicates",
-        Class == "Elasmobranchii" ~ "Sharks",
+        Class == "Elasmobranchii" ~ "Sharks & rays",
         Class == "Reptilia"~ "Reptiles",
         Phylum == "Echinodermata"~ "Echinoderms",
         Phylum == "Porifera" ~ "Sponges",
-        Phylum == "Annelida" ~ "Worms",
-        Class == "Hydrozoa" ~ "Hydrozoans")) %>% 
+        Phylum %in% c("Annelida", "Sipuncula") ~ "Worms",
+        Class == "Hydrozoa" ~ "Hydrozoans",
+        Phylum == "Foraminifera" ~ "Forams")) %>% 
     collect()
   
   copy_to(
