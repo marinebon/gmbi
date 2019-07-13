@@ -140,9 +140,9 @@ obs_cells <- tbl(con, "obs_cells")
 Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensorGlobalPatternsPredictors2010].
 
 - Primarily coastal species [@tittensorGlobalPatternsPredictors2010]
-    - **Coastal fishes**: `Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
+    - **Bony fishes**: `Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
     - Non-oceanic sharks
-    - **Non-squid cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida")`
+    - **Non-squid cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida")`
     - **Pinnipeds**: `Family %in% c("Odobenidae", "Otariidae", "Phocidae")`
     - **Corals**: `Class == "Anthozoa"` (soft/hard + anemones + gorgonians)
     - **Seagrasses**: `Order == "Alismatales"`
@@ -150,7 +150,7 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
 - Primarily oceanic species [@tittensorGlobalPatternsPredictors2010]
     - **Tunas and billfishes**: `Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
     - Oceanic sharks
-    - **Squids**:  `Order %in% c("Myopsida","Oegopsida")`
+    - **Squids**:  `Order %in% c("Myopsida","Oegopsida","Teuthida")`
     - **Cetaceans**: `Order == "Cetacea"`
     - **Euphausiids**: `Order == "Euphausiacea"`
     - Foraminifera: n=0 for Phylum=Retaria
@@ -192,7 +192,7 @@ if (!"group" %in% spp_cols){
   spp <- spp %>% 
     mutate(
       group = case_when(
-        Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Coastal fishes",
+        Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Bony fishes",
         Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida") ~ "Non-squid cephalopods",
         Family %in% c("Odobenidae", "Otariidae", "Phocidae") ~ "Pinnipeds",
         Class == "Anthozoa" ~ "Corals",
