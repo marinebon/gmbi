@@ -131,6 +131,7 @@ Load tables for querying.
 ```{r load tbls}
 spp       <- tbl(con, "spp")
 cells     <- tbl(con, "cells")
+env_cells <- tbl(con, "env_cells")
 spp_cells <- tbl(con, "spp_cells")
 obs_cells <- tbl(con, "obs_cells")
 ```
@@ -189,7 +190,7 @@ spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
 
 if (!"group" %in% spp_cols){
 
-  spp <- spp %>% 
+  spp <- tbl(con, "spp") %>% 
     mutate(
       group = case_when(
         Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Bony fishes",
@@ -226,6 +227,108 @@ if (!"group" %in% spp_cols){
 spp_group <- tbl(con, "spp") %>% 
   pull(group)
 table(spp_group, useNA="always")
+```
+
+## Determine percent in high seas for each species
+
+Based on 0.5 probability threshold.
+
+```{r, eval=F}
+spp_prob_threshold <- 0.5
+
+# get high seas from BBNJ package
+r_pu_id <- raster(here("../bbnj/inst/data/pu_id.tif"))
+cells_bbnj <- tibble(
+  cellid = raster::values(r_pu_id)) %>% 
+  filter(!is.na(cellid)) %>% 
+  mutate(in_bbnj = T)
+
+cells2 <- tbl(con, "cells") %>% 
+  # join with ocean area per cell
+  left_join(
+    tbl(con, "env_cells"),
+    by = c("CenterLat","CenterLong")) %>% 
+  select(cellid, CenterLat, CenterLong, OceanArea) %>% 
+  collect() %>% 
+  # join with in_bbnj
+  left_join(
+    cells_bbnj,
+    by = "cellid") %>% 
+  mutate(
+    in_bbnj = replace_na(in_bbnj, F),
+    cellid = as.integer(cellid))
+
+# plot OceanArea
+hist(cells2$OceanArea)
+r <- setValues(r_pu_id, NA)
+r[cells2$cellid] <- cells2$OceanArea
+mapview::mapview(r)
+
+# plot in_bbnj
+table(cells2$in_bbnj, useNA="ifany")
+r <- setValues(r_pu_id, NA)
+r[cells2$cellid] <- cells2$in_bbnj
+mapview::mapview(r, method="ngb")
+
+# update cells table
+copy_to(
+  con, cells2, "cells", temporary=F, overwrite=T,
+  unique_indexes=list("cellid"),
+  indexes = list("CenterLat", "CenterLong", "in_bbnj", "OceanArea"))
+
+# set spp_cells.cellid
+r <- DBI::dbSendStatement(con, 
+  'UPDATE spp_cells AS sc
+  SET cellid = c.cellid
+  FROM cells AS c
+  WHERE 
+    sc."CenterLat"  = c."CenterLat" AND 
+    sc."CenterLong" = c."CenterLong";')
+
+pct_brks <- c(0,0.001,0.25,1)
+
+spp_sum <- tbl(con, "spp_cells") %>% 
+  filter(probability >= spp_prob_threshold) %>% 
+  left_join(
+    tbl(con, "cells"), by="cellid") %>% 
+  select(SpeciesID, cellid, OceanArea, in_bbnj) %>% 
+  group_by(SpeciesID) %>% 
+  summarize(
+    n_cells        = n(),
+    area_ocean_km2 = sum(OceanArea, na.rm=T),
+    area_bbnj_km2  = sum(OceanArea * as.integer(in_bbnj), na.rm=T)) %>% 
+  mutate(
+    area_bbnj_pct = area_bbnj_km2 / area_ocean_km2) %>% 
+  collect() %>% 
+  mutate(
+    area_bbnj_pct_cat = cut(
+      area_bbnj_pct, pct_brks, include.lowest = T)) # 2 min
+table(spp_sum$area_bbnj_pct_cat, useNA = "ifany")
+
+# spp_sum <- spp_sum %>% 
+#   mutate(
+#     area_bbnj_pct_cat = replace_na(
+#       area_bbnj_pct_cat, 
+#       levels(spp_sum$area_bbnj_pct_cat)[1]))
+
+spp_bbnj_csv <- here("inst/data/spp_bbnj.csv")
+spp_bbnj <- tbl(con, "spp") %>% 
+  collect() %>% 
+  left_join(
+    spp_sum,
+    by=c(SPECIESID="SpeciesID"))
+write_csv(spp_bbnj, spp_bbnj_csv)
+
+spp_bbnj_grp_csv <- here("inst/data/spp_bbnj_grouped.csv")
+spp_bbnj_grp <- spp_bbnj %>% 
+  mutate(
+    area_bbnj_pct_cat = fct_explicit_na(
+      area_bbnj_pct_cat, na_level = "(NA)")) %>% 
+  group_by(group, area_bbnj_pct_cat) %>% 
+  summarize(
+    nspp = n()) %>% 
+  spread(area_bbnj_pct_cat, nspp)
+write_csv(spp_bbnj_grp, spp_bbnj_grp_csv, na = "")
 ```
 
 ## Get extinction risk from IUCN
