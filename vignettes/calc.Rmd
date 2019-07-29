@@ -74,10 +74,12 @@ library(here)
 library(glue)
 library(raster)
 library(DBI)
+library(DT)
 library(RPostgreSQL)
 library(tictoc)
 library(furrr)
 library(RColorBrewer)
+library(zeallot)
 
 library(devtools); load_all() # library(gmbi)
 
@@ -88,13 +90,21 @@ spp_iucn_csv <- here("inst/data/spp_iucn.csv")
 spp_csv      <- here("inst/data/spp.csv")
 dir_nc       <- "~/docker_pg_data/aquamaps2100_nc"
 spp_2100_csv <- "~/docker_pg_data/aquamaps2100_nc.csv"
+spp_bbnj_csv      <- here("inst/data/spp_bbnj.csv")
+spp_bbnj_grp_csv  <- here("inst/data/spp_bbnj_grouped.csv")
+spp_bbnj_grps_csv <- here("inst/data/spp_bbnj_groups.csv")
 
 # plotting parameters
 pal <- colorRampPalette(brewer.pal(11, "Spectral"))
 cols <- rev(pal(255))
 par(mar=c(0.5,0.5,0.5,0.5))
 
-# database connection
+# helper functions ----
+tbl_cols <- function(con, tbl){
+  tbl(con, tbl) %>% head(1) %>% collect() %>% names()
+}
+
+# conntect to database
 con <- get_db_con(password=readLines("~/private/pg_pass"))
 con
 ```
@@ -180,21 +190,18 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
 ```{r set spp groups, eval=F}
 spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
 
-
 # group = NA: 1176
 # library(tidyverse)
 # read_csv("~/Gdrive Ecoquants/projects/High Seas MPAs/bbnj/data/raw/AquaMaps/spp.csv") %>% 
 #   filter(is.na(group)) %>% 
 #   nrow()
-
-
-if (!"group" %in% spp_cols){
+if (!"groups01" %in% spp_cols){
 
   spp <- tbl(con, "spp") %>% 
     mutate(
-      group = case_when(
+      groups01 = case_when(
         Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Bony fishes",
-        Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida") ~ "Non-squid cephalopods",
+        Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Non-squid cephalopods",
         Family %in% c("Odobenidae", "Otariidae", "Phocidae") ~ "Pinnipeds",
         Class == "Anthozoa" ~ "Corals",
         Order == "Alismatales" ~ "Seagrasses",
@@ -215,28 +222,70 @@ if (!"group" %in% spp_cols){
         Phylum == "Porifera" ~ "Sponges",
         Phylum %in% c("Annelida", "Sipuncula") ~ "Worms",
         Class == "Hydrozoa" ~ "Hydrozoans",
-        Phylum == "Foraminifera" ~ "Forams")) %>% 
+        Phylum == "Foraminifera" ~ "Forams",
+        TRUE ~ "Other")) %>% 
     collect()
   
   copy_to(
     con, spp, "spp", temporary=F, overwrite=T,
     unique_indexes=list("SPECIESID"),
-    indexes = list("group"))
+    indexes = list("group", "groups01"))
 }
-
-spp_group <- tbl(con, "spp") %>% 
-  pull(group)
-table(spp_group, useNA="always")
+tbl(con, "spp") %>% 
+  collect() %>% 
+  pull(groups01) %>% 
+  table(useNA="always")
 ```
+
+```{r}
+if (!"groups04" %in% spp_cols){
+  
+  spp <- tbl(con, "spp") %>% 
+    mutate(
+      groups04 = case_when(
+        Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ 
+          "Tunas & billfishes",
+        Class == "Actinopterygii" & 
+          !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ 
+          "Bony fishes",
+        Class == "Cephalopoda" ~ 
+          "Cephalopods",
+        Class == "Mammalia"    ~ 
+          "Marine Mammals",
+        Class == "Anthozoa"    ~ 
+          "Corals",
+        Order == "Alismatales" ~ 
+          "Seagrasses",
+        Phylum %in% c("Mollusca", "Arthropoda", "Echinodermata", "Porifera","Annelida", "Sipuncula","Cnidaria") & 
+          !Family %in% c("Cephalopoda") & 
+          !Class %in% c("Anthozoa") | 
+          Class %in% c("Ascidiacea","Thaliacea","Appendicularia") ~ 
+          "Invertebrates",
+        Class == "Elasmobranchii" ~ 
+          "Sharks & rays",
+        TRUE ~ "Other")) %>% 
+    collect()
+  
+  copy_to(
+    con, spp, "spp", temporary=F, overwrite=T,
+    unique_indexes=list("SPECIESID"),
+    indexes = list("group", "groups01","groups04"))
+}
+tbl(con, "spp") %>% 
+  collect() %>% 
+  pull(groups04) %>% 
+  table(useNA="always")
+```
+
 
 ## Determine percent in high seas for each species
 
 Based on 0.5 probability threshold.
 
-```{r, eval=F}
+```{r pct_highseas, eval=F}
 spp_prob_threshold <- 0.5
 
-# get high seas from BBNJ package
+# in_bbnj: cells in high seasm, from BBNJ package ----
 r_pu_id <- raster(here("../bbnj/inst/data/pu_id.tif"))
 cells_bbnj <- tibble(
   cellid = raster::values(r_pu_id)) %>% 
@@ -276,6 +325,8 @@ copy_to(
   unique_indexes=list("cellid"),
   indexes = list("CenterLat", "CenterLong", "in_bbnj", "OceanArea"))
 
+# area_ocean & pct_bbnj -----
+
 # set spp_cells.cellid
 r <- DBI::dbSendStatement(con, 
   'UPDATE spp_cells AS sc
@@ -305,36 +356,86 @@ spp_sum <- tbl(con, "spp_cells") %>%
       area_bbnj_pct, pct_brks, include.lowest = T)) # 2 min
 table(spp_sum$area_bbnj_pct_cat, useNA = "ifany")
 
+copy_to(
+  con, spp_sum, "spp", temporary=F, overwrite=T,
+  unique_indexes=list("SPECIESID"),
+  indexes = list(
+    "groups00", 
+    "groups01", "groups02", "groups03"))
+
 # spp_sum <- spp_sum %>% 
 #   mutate(
 #     area_bbnj_pct_cat = replace_na(
 #       area_bbnj_pct_cat, 
 #       levels(spp_sum$area_bbnj_pct_cat)[1]))
 
-spp_bbnj_csv <- here("inst/data/spp_bbnj.csv")
 spp_bbnj <- tbl(con, "spp") %>% 
   collect() %>% 
-  left_join(
-    spp_sum,
-    by=c(SPECIESID="SpeciesID"))
+  mutate(
+    # groups01: in high seas (groups02), 25% in high seas (groups03)
+    groups02 = case_when(
+      area_bbnj_km2 > 0 ~ groups01),
+    groups03 = case_when(
+      area_bbnj_pct >= 0.25 ~ groups01),
+    # groups04: in high seas (groups05), 25% in high seas (groups06)
+    groups05 = case_when(
+      area_bbnj_km2 > 0 ~ groups04),
+    groups06 = case_when(
+      area_bbnj_pct >= 0.25 ~ groups04))
 write_csv(spp_bbnj, spp_bbnj_csv)
 
-spp_bbnj_grp_csv <- here("inst/data/spp_bbnj_grouped.csv")
+copy_to(
+  con, spp_bbnj, "spp", temporary=F, overwrite=T,
+  unique_indexes=list("SPECIESID"),
+  indexes = list(
+    "group", "groups00", 
+    "groups01", "groups02", "groups03",
+    "groups04", "groups05", "groups06"))
+
+setdiff(names(spp_bbnj), tbl_cols(con, "spp"))
+
 spp_bbnj_grp <- spp_bbnj %>% 
   mutate(
     area_bbnj_pct_cat = fct_explicit_na(
       area_bbnj_pct_cat, na_level = "(NA)")) %>% 
-  group_by(group, area_bbnj_pct_cat) %>% 
+  group_by(groups01, area_bbnj_pct_cat) %>% 
   summarize(
     nspp = n()) %>% 
   spread(area_bbnj_pct_cat, nspp)
 write_csv(spp_bbnj_grp, spp_bbnj_grp_csv, na = "")
+
+spp_bbnj_grps <- count(spp_bbnj, groups01, name="groups01_all") %>% 
+  rename(group=groups01) %>% 
+  left_join(
+    count(spp_bbnj, groups02, name="groups02_hs"),
+    by = c("group"="groups02")) %>% 
+  left_join(
+    count(spp_bbnj, groups03, name="groups03_hs25"),
+    by = c("group"="groups03")) %>% 
+  mutate(
+    groups02_pct = groups02_hs / groups01_all,
+    groups03_pct = groups03_hs25 / groups01_all)
+write_csv(spp_bbnj_grps, spp_bbnj_grps_csv, na = "")
 ```
+
+- `groups00`: All original AquaMaps species 
+- `groups01`: 1st taxonomic grouping
+- `groups02`: 1st grouping, species (prob≥ 0.5) in high seas
+- `groups03`: 1st grouping, species (prob ≥ 0.5) and 25% of its range in high seas
+- `groups04`: 2nd taxonomic grouping
+- `groups05`: 2nd grouping, species (prob≥ 0.5) in high seas
+- `groups06`: 2nd grouping, species (prob ≥ 0.5) and 25% of its range in high seas
+
+```{r spp_bbnj_grps}
+read_csv(spp_bbnj_grps_csv, na = "") %>%
+  write_csv(spp_bbnj_grps_csv, na = "")
+  datatable()
+```
+
 
 ## Get extinction risk from IUCN
 
 RedList token issued to <ben@ecoquants.com> via <http://apiv3.iucnredlist.org/api/v3/token>.
-
 
 ```{r get spp iucn_*}
 if (!file.exists(spp_iucn_csv)){
@@ -702,7 +803,7 @@ http://thredds.d4science.org/thredds/fileServer/public/netcdf/AquaMaps_08_2016/P
 - **Cite this set of maps as**: Computer generated distribution maps for _{Genus} {species}_ ({common}), with modelled year 2100 native range map based on IPCC A2 emissions scenario. www.aquamaps.org, version of Aug. 2016. Web. Accessed 10 Jun. 2019. 
 
 
-```{r}
+```{r get spp_2100}
 library(raster)
 library(glue)
 library(here)
@@ -1075,6 +1176,119 @@ names(s_rls_2100) <- names(s_rls_2100) %>%
 plot(s_rls_2100, col = cols)
 ```
 
+## Redo: Multiple Groups, Now and Future 
+
+## `nspp|rli_`**`all`**, per `mdl` (now|2100)
+
+```{r calc one tbl_spp_cells & one col_grp}
+spp_prob_threshold <- 0.5
+
+lut_mdl <- tribble(
+  ~tbl_spp_cells  , ~mdl_sfx,
+  "spp_cells"     , "",
+  "spp_cells_2100", "_2100")
+
+col_grp <- "groups00"
+dir_grp <- glue("{dir_out}/{col_grp}{sfx_mdl}")
+
+dir.create(dir_grp, showWarnings = F)
+
+if (!"groups00" %in% tbl_cols(con, "spp")){
+  dbSendStatement(
+    con, 
+    "ALTER TABLE spp ADD COLUMN groups00 TEXT NULL;
+    UPDATE spp SET groups00 = 'All';")
+  # tbl(con, "spp") %>% select(SPECIESID, groups00)
+}
+
+for (i in seq_along(lut_mdl)){ # i=1
+  
+  tbl_spp_cells <- lut_mdl$tbl_spp_cells[i]
+  mdl_sfx       <- lut_mdl$mdl_sfx[i]
+  nspp_all_tif  <- glue("{dir_grp}/nspp_all{sfx_mdl}.tif")
+  
+  cells_nspp <- tbl(con, tbl_spp_cells) %>% 
+    filter(
+      probability >= spp_prob_threshold) %>% 
+    group_by(cellid) %>% 
+    summarize(
+      nspp = n()) %>% 
+    collect()
+  r_nspp_all <- df_to_raster(cells_nspp, "nspp", nspp_all_tif)
+  
+
+}
+
+if (!file.exists(nspp_all_tif)){
+  
+  # get species richness, with default col_cellid="cellid"
+  
+}
+
+r_nspp_all_2100 <- raster(tif)
+
+plot(r_nspp_all_2100, col = cols, main="Species Richness, All 2100")
+```
+
+
+```{r iterate, eval=F}
+spp_prob_threshold <- 0.5
+redo               <- F
+
+# lookup table for modeling period (now, 2100) to get suffix and tables of species distribution
+tbls_mdls <- tribble(
+  ~tbl_spp_cells  , ~col_spp   , ~mdl_sfx,
+  "spp_cells"     , "SpeciesID", "",
+  "spp_cells_2100", "speciesid", "_2100")
+
+# columns in species table describing taxonomic groups
+cols_grps <- str_subset(tbl_cols(con, "spp"), "groups[0-9]+$") %>% sort()
+
+products <- c("nspp", "rli")
+
+# iterate over modeling period (now/2100) given by tbl_spp_cells
+for (i in seq_along(tbls_mdls)){ # i=1 # i=2
+  
+  tbl_spp_cells <- tbls_mdls$tbl_spp_cells[i]
+  col_spp       <- tbls_mdls$col_spp[i]
+  mdl_sfx       <- tbls_mdls$mdl_sfx[i]
+  message(glue("mdl_sfx: {mdl_sfx} -- {Sys.time()}"))
+
+  # iterate over taxonomic group (groups01, groups02,...) given by col_grps
+  for (col_grps in cols_grps){ # col_grps = cols_grps[2] # col_grps <- "groups00"
+    
+    grpsmdl     <- glue("{col_grps}{mdl_sfx}")
+    dir_grpsmdl <- glue("{dir_out}/{grpsmdl}")
+    dir.create(dir_grpsmdl, showWarnings = F)
+    message(glue("  dir_grpsmdl: {basename(dir_grpsmdl)}/ -- {Sys.time()}"))
+    
+    groups <- dbGetQuery(con, glue("SELECT DISTINCT {col_grps} FROM SPP;")) %>% 
+      pull(!!col_grps)
+
+    for (group in groups){ # group = groups[9]
+      
+      grp <- group_to_grp(group) 
+      message(glue("    grp: {grp} -- {Sys.time()}"))
+      
+      for (product in products){ # product = products[2]
+        
+        tif <- glue("{dir_grpsmdl}/{grpsmdl}_{product}_{grp}.tif")
+        message(glue("      tif: {basename(tif)} -- {Sys.time()}"))
+        
+        if (file.exists(tif) & !redo) next()
+          
+        if (product == "nspp"){
+          # devtools::load_all()
+          calc_nspp(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)}
+        
+        if (product == "rli"){
+          calc_rli(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)}
+        
+      } # end: for (product in products){
+    } # end: for (group in groups){
+  } # end: for (col_grps in cols_grps){
+} # end: for (i in seq_along(tbls_mdls)){
+```
 
 
 ## TODO: Archive DB
