@@ -1242,12 +1242,16 @@ tbls_mdls <- tribble(
   "spp_cells_2100", "speciesid", "_2100")
 
 # columns in species table describing taxonomic groups
-cols_grps <- str_subset(tbl_cols(con, "spp"), "groups[0-9]+$") %>% sort()
+#cols_grps <- str_subset(tbl_cols(con, "spp"), "groups[0-9]+$") %>% sort()
+#cols_grps <- c("groups05", "groups06")
+cols_grps <- str_subset(tbl_cols(con, "spp"), "groups[0-9]+$") %>% 
+  sort() %>% 
+  setdiff(c("groups05", "groups06"))
 
 products <- c("nspp", "rli")
 
 # iterate over modeling period (now/2100) given by tbl_spp_cells
-for (i in seq_along(tbls_mdls)){ # i=1 # i=2
+for (i in 1:nrow(tbls_mdls)){ # i=1 # i=2
   
   tbl_spp_cells <- tbls_mdls$tbl_spp_cells[i]
   col_spp       <- tbls_mdls$col_spp[i]
@@ -1263,7 +1267,7 @@ for (i in seq_along(tbls_mdls)){ # i=1 # i=2
     message(glue("  dir_grpsmdl: {basename(dir_grpsmdl)}/ -- {Sys.time()}"))
     
     groups <- dbGetQuery(con, glue("SELECT DISTINCT {col_grps} FROM SPP;")) %>% 
-      pull(!!col_grps)
+      pull(!!col_grps) %>% na.omit() %>% sort()
 
     for (group in groups){ # group = groups[9]
       
@@ -1275,11 +1279,11 @@ for (i in seq_along(tbls_mdls)){ # i=1 # i=2
         tif <- glue("{dir_grpsmdl}/{grpsmdl}_{product}_{grp}.tif")
         message(glue("      tif: {basename(tif)} -- {Sys.time()}"))
         
-        if (file.exists(tif) & !redo) next()
+        #if (file.exists(tif) & !redo) next()
           
-        if (product == "nspp"){
+        #if (product == "nspp"){
           # devtools::load_all()
-          calc_nspp(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)}
+        #  calc_nspp(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)}
         
         if (product == "rli"){
           calc_rli(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)}
@@ -1289,6 +1293,8 @@ for (i in seq_along(tbls_mdls)){ # i=1 # i=2
   } # end: for (col_grps in cols_grps){
 } # end: for (i in seq_along(tbls_mdls)){
 ```
+
+
 
 
 ## TODO: Archive DB

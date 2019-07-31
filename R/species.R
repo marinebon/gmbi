@@ -116,7 +116,7 @@ calc_nspp <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_pro
 #'
 #' @return True of completed, False if not
 #' @export
-calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold=0.5){
+calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold=0.5, w_max = 4){
 
   x <- tbl(con, "spp") %>%
     filter(groups04 == "Marine Mammals") %>% collect()
@@ -124,8 +124,8 @@ calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob
   spp_grp_w <- tbl(con, "spp") %>%
     filter(
       !!sym(col_grps) == !!group,
-      !is.na(iucn_weight),
-      iucn_weight != 0) %>%
+      !is.na(iucn_weight)) %>%
+      #iucn_weight != 0) %>%
     collect()
 
   if (nrow(spp_grp_w) == 0){
@@ -136,8 +136,8 @@ calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob
   cells_rli <- tbl(con, "spp") %>%
     filter(
       !!sym(col_grps) == !!group,
-      !is.na(iucn_weight),
-      iucn_weight != 0) %>%
+      !is.na(iucn_weight)) %>%
+      #iucn_weight != 0) %>%
     left_join(
       tbl(con, tbl_spp_cells) %>%
         select(
@@ -151,7 +151,7 @@ calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob
       nspp_w = n()) %>%
     collect() %>%
     mutate(
-      rli = rls / nspp_w)
+      rli = 1 - (rls / (nspp_w * w_max) ))
 
   r <- df_to_raster(cells_rli, "rli", tif)
   #plot(r, col = cols, main=glue("rli {col_grps}-{grp}-{tbl_spp_cells}"))
