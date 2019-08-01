@@ -116,7 +116,7 @@ calc_nspp <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_pro
 #'
 #' @return True of completed, False if not
 #' @export
-calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold=0.5, w_max = 4){
+calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold=0.5, w_max = 4, rls_tif = NULL){
 
   x <- tbl(con, "spp") %>%
     filter(groups04 == "Marine Mammals") %>% collect()
@@ -133,7 +133,7 @@ calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob
     return(F) }
 
   # calculate avg RedList sum of weights
-  cells_rli <- tbl(con, "spp") %>%
+  cells <- tbl(con, "spp") %>%
     filter(
       !!sym(col_grps) == !!group,
       !is.na(iucn_weight)) %>%
@@ -149,11 +149,17 @@ calc_rli <- function(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob
     summarize(
       rls    = sum(iucn_weight, na.rm = T),
       nspp_w = n()) %>%
-    collect() %>%
+    collect()
+
+  cells <- cells %>%
     mutate(
       rli = 1 - (rls / (nspp_w * w_max) ))
 
-  r <- df_to_raster(cells_rli, "rli", tif)
+  if (!is.null(rls_tif)){
+    r <- df_to_raster(cells, "rls", rls_tif)
+  }
+  r <- df_to_raster(cells, "rli", tif)
+
   #plot(r, col = cols, main=glue("rli {col_grps}-{grp}-{tbl_spp_cells}"))
   T
 }

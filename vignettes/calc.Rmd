@@ -107,6 +107,10 @@ tbl_cols <- function(con, tbl){
 # conntect to database
 con <- get_db_con(password=readLines("~/private/pg_pass"))
 con
+
+#Error: in postgresqlCloseConnection(conn, ...) : 
+#  connection has pending rows (close open results set first)
+#Fix: dbClearResult(dbListResults(con)[[1]])
 ```
 
 ## Load AquaMaps csvs into database
@@ -153,7 +157,7 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
 - Primarily coastal species [@tittensorGlobalPatternsPredictors2010]
     - **Bony fishes**: `Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
     - Non-oceanic sharks
-    - **Non-squid cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida")`
+    - **Cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida")`
     - **Pinnipeds**: `Family %in% c("Odobenidae", "Otariidae", "Phocidae")`
     - **Corals**: `Class == "Anthozoa"` (soft/hard + anemones + gorgonians)
     - **Seagrasses**: `Order == "Alismatales"`
@@ -177,7 +181,7 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
         - Cephalopods
         - Squids
     - Chordata
-        - **Tunicates**: `Class %in% c("Ascidiacea","Thaliacea")`
+        - **Tunicates**: `Class %in% c("Ascidiacea","Thaliacea","Appendicularia")`
         - **Sharks & Rays**: `Class == "Elasmobranchii"` (actually Class=Chondrichthyes, Subclass=Elasmobranchii)
         - **Reptiles**: `Class == "Reptilia"` crocodiles, sea snakes & sea turtles
     - **Echinoderms**: `Phylum == "Echinodermata"`
@@ -185,7 +189,9 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
     - **Worms**: `Phylum %in% c("Annelida", "Sipuncula")`
     - Cnidaria
         - **Hydrozoans**: `Class == "Hydrozoa"`
+        - **Jellyfish**: `Class %in% c("Cubozoa","Hydrozoa","Scyphozoa","Staurozoa")`
     - **Foraminifera**: `Phylum == "Foraminifera"`
+    
 
 ```{r set spp groups, eval=F}
 spp_cols <- tbl(con, "spp") %>% head(1) %>% collect() %>% names()
@@ -201,7 +207,7 @@ if (!"groups01" %in% spp_cols){
     mutate(
       groups01 = case_when(
         Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Bony fishes",
-        Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Non-squid cephalopods",
+        Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Cephalopods",
         Family %in% c("Odobenidae", "Otariidae", "Phocidae") ~ "Pinnipeds",
         Class == "Anthozoa" ~ "Corals",
         Order == "Alismatales" ~ "Seagrasses",
@@ -215,7 +221,7 @@ if (!"groups01" %in% spp_cols){
         Class == "Gastropoda" ~ "Gastropods",
         Class == "Bivalvia" ~ "Bivalves",
         Class == "Polyplacophora" ~ "Chitons",
-        Class %in% c("Ascidiacea","Thaliacea") ~ "Tunicates",
+        Class %in% c("Ascidiacea","Thaliacea","Appendicularia") ~ "Tunicates",
         Class == "Elasmobranchii" ~ "Sharks & rays",
         Class == "Reptilia"~ "Reptiles",
         Phylum == "Echinodermata"~ "Echinoderms",
@@ -223,6 +229,7 @@ if (!"groups01" %in% spp_cols){
         Phylum %in% c("Annelida", "Sipuncula") ~ "Worms",
         Class == "Hydrozoa" ~ "Hydrozoans",
         Phylum == "Foraminifera" ~ "Forams",
+        Class %in% c("Cubozoa","Hydrozoa","Scyphozoa","Staurozoa") ~ "Jellyfish",
         TRUE ~ "Other")) %>% 
     collect()
   
@@ -392,30 +399,30 @@ copy_to(
     "groups01", "groups02", "groups03",
     "groups04", "groups05", "groups06"))
 
-setdiff(names(spp_bbnj), tbl_cols(con, "spp"))
-
-spp_bbnj_grp <- spp_bbnj %>% 
-  mutate(
-    area_bbnj_pct_cat = fct_explicit_na(
-      area_bbnj_pct_cat, na_level = "(NA)")) %>% 
-  group_by(groups01, area_bbnj_pct_cat) %>% 
-  summarize(
-    nspp = n()) %>% 
-  spread(area_bbnj_pct_cat, nspp)
-write_csv(spp_bbnj_grp, spp_bbnj_grp_csv, na = "")
-
-spp_bbnj_grps <- count(spp_bbnj, groups01, name="groups01_all") %>% 
-  rename(group=groups01) %>% 
-  left_join(
-    count(spp_bbnj, groups02, name="groups02_hs"),
-    by = c("group"="groups02")) %>% 
-  left_join(
-    count(spp_bbnj, groups03, name="groups03_hs25"),
-    by = c("group"="groups03")) %>% 
-  mutate(
-    groups02_pct = groups02_hs / groups01_all,
-    groups03_pct = groups03_hs25 / groups01_all)
-write_csv(spp_bbnj_grps, spp_bbnj_grps_csv, na = "")
+# TODO: update below to summarize for all groups##
+#setdiff(names(spp_bbnj), tbl_cols(con, "spp"))
+# spp_bbnj_grp <- spp_bbnj %>% 
+#   mutate(
+#     area_bbnj_pct_cat = fct_explicit_na(
+#       area_bbnj_pct_cat, na_level = "(NA)")) %>% 
+#   group_by(groups01, area_bbnj_pct_cat) %>% 
+#   summarize(
+#     nspp = n()) %>% 
+#   spread(area_bbnj_pct_cat, nspp)
+# write_csv(spp_bbnj_grp, spp_bbnj_grp_csv, na = "")
+# 
+# spp_bbnj_grps <- count(spp_bbnj, groups01, name="groups01_all") %>% 
+#   rename(group=groups01) %>% 
+#   left_join(
+#     count(spp_bbnj, groups02, name="groups02_hs"),
+#     by = c("group"="groups02")) %>% 
+#   left_join(
+#     count(spp_bbnj, groups03, name="groups03_hs25"),
+#     by = c("group"="groups03")) %>% 
+#   mutate(
+#     groups02_pct = groups02_hs / groups01_all,
+#     groups03_pct = groups03_hs25 / groups01_all)
+# write_csv(spp_bbnj_grps, spp_bbnj_grps_csv, na = "")
 ```
 
 - `groups00`: All original AquaMaps species 
@@ -1232,6 +1239,11 @@ plot(r_nspp_all_2100, col = cols, main="Species Richness, All 2100")
 
 
 ```{r iterate, eval=F}
+# con <- get_db_con(password=readLines("~/private/pg_pass"))
+# Error: in postgresqlCloseConnection(conn, ...) : 
+#  connection has pending rows (close open results set first)
+# Fix: dbClearResult(dbListResults(con)[[1]])
+
 spp_prob_threshold <- 0.5
 redo               <- F
 
@@ -1244,9 +1256,10 @@ tbls_mdls <- tribble(
 # columns in species table describing taxonomic groups
 #cols_grps <- str_subset(tbl_cols(con, "spp"), "groups[0-9]+$") %>% sort()
 #cols_grps <- c("groups05", "groups06")
-cols_grps <- str_subset(tbl_cols(con, "spp"), "groups[0-9]+$") %>% 
-  sort() %>% 
-  setdiff(c("groups05", "groups06"))
+# cols_grps <- str_subset(tbl_cols(con, "spp"), "groups[0-9]+$") %>% 
+#   sort() %>% 
+#   setdiff(c("groups05", "groups06"))
+cols_grps <- str_subset(tbl_cols(con, "spp"), "groups0[1-3]{1}") %>% sort()
 
 products <- c("nspp", "rli")
 
@@ -1277,16 +1290,21 @@ for (i in 1:nrow(tbls_mdls)){ # i=1 # i=2
       for (product in products){ # product = products[2]
         
         tif <- glue("{dir_grpsmdl}/{grpsmdl}_{product}_{grp}.tif")
-        message(glue("      tif: {basename(tif)} -- {Sys.time()}"))
+        
         
         #if (file.exists(tif) & !redo) next()
           
-        #if (product == "nspp"){
-          # devtools::load_all()
-        #  calc_nspp(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)}
+        if (product == "nspp"){
+          #devtools::load_all()
+          message(glue("      tif: {basename(tif)} -- {Sys.time()}"))
+          calc_nspp(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)
+        }
         
         if (product == "rli"){
-          calc_rli(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold)}
+          rls_tif <- str_replace(tif, "_rli_", "_rls_")
+          message(glue("      tif: {basename(tif)}; rls_tif: {basename(rls_tif)} -- {Sys.time()}"))
+          calc_rli(con, tif, col_grps, group, tbl_spp_cells, col_spp, spp_prob_threshold, rls_tif=rls_tif)
+        }
         
       } # end: for (product in products){
     } # end: for (group in groups){
