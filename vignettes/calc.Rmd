@@ -157,7 +157,8 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
 - Primarily coastal species [@tittensorGlobalPatternsPredictors2010]
     - **Bony fishes**: `Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
     - Non-oceanic sharks
-    - **Cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida")`
+    - -[**Cephalopods**: `Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida")`]
+    - **Cephalopods**: `Class == "Cephalopoda"`
     - **Pinnipeds**: `Family %in% c("Odobenidae", "Otariidae", "Phocidae")`
     - **Corals**: `Class == "Anthozoa"` (soft/hard + anemones + gorgonians)
     - **Seagrasses**: `Order == "Alismatales"`
@@ -165,7 +166,7 @@ Assign taxonomic groups borrowing from previous global OBIS analysis [@tittensor
 - Primarily oceanic species [@tittensorGlobalPatternsPredictors2010]
     - **Tunas and billfishes**: `Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae")`
     - Oceanic sharks
-    - **Squids**:  `Order %in% c("Myopsida","Oegopsida","Teuthida")`
+    - -[**Squids**:  `Order %in% c("Myopsida","Oegopsida","Teuthida")`]
     - **Cetaceans**: `Order == "Cetacea"`
     - **Euphausiids**: `Order == "Euphausiacea"`
     - Foraminifera: n=0 for Phylum=Retaria
@@ -207,13 +208,14 @@ if (!"groups01" %in% spp_cols){
     mutate(
       groups01 = case_when(
         Class == "Actinopterygii" & !Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Bony fishes",
-        Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Cephalopods",
+        #Class == "Cephalopoda" & !Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Cephalopods",
+        #Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Squids",
+        Class == "Cephalopoda" ~ "Cephalopods",
         Family %in% c("Odobenidae", "Otariidae", "Phocidae") ~ "Pinnipeds",
         Class == "Anthozoa" ~ "Corals",
         Order == "Alismatales" ~ "Seagrasses",
         Genus == "Avicennia" & Species == "germinans" ~ "Mangroves",
         Family %in% c("Scombridae", "Istiophoridae", "Xiphiidae") ~ "Tunas & billfishes",
-        Order %in% c("Myopsida","Oegopsida","Teuthida") ~ "Squids",
         Order == "Cetacea" ~ "Cetaceans",
         Order == "Euphausiacea" ~ "Euphausiids",
         Class %in% c("Malacostraca","Ostracoda","Branchiopoda","Cephalocarida","Maxillopoda") ~ "Crustaceans",
@@ -1272,7 +1274,7 @@ for (i in 1:nrow(tbls_mdls)){ # i=1 # i=2
   message(glue("mdl_sfx: {mdl_sfx} -- {Sys.time()}"))
 
   # iterate over taxonomic group (groups01, groups02,...) given by col_grps
-  for (col_grps in cols_grps){ # col_grps = cols_grps[2] # col_grps <- "groups00"
+  for (col_grps in cols_grps){ # col_grps = cols_grps[1] # col_grps <- "groups00"
     
     grpsmdl     <- glue("{col_grps}{mdl_sfx}")
     dir_grpsmdl <- glue("{dir_out}/{grpsmdl}")
@@ -1282,17 +1284,16 @@ for (i in 1:nrow(tbls_mdls)){ # i=1 # i=2
     groups <- dbGetQuery(con, glue("SELECT DISTINCT {col_grps} FROM SPP;")) %>% 
       pull(!!col_grps) %>% na.omit() %>% sort()
 
-    for (group in groups){ # group = groups[9]
+    for (group in groups){ # group = groups[3]
       
       grp <- group_to_grp(group) 
       message(glue("    grp: {grp} -- {Sys.time()}"))
       
-      for (product in products){ # product = products[2]
+      for (product in products){ # product = products[1]
         
         tif <- glue("{dir_grpsmdl}/{grpsmdl}_{product}_{grp}.tif")
         
-        
-        #if (file.exists(tif) & !redo) next()
+        if (file.exists(tif) & !redo) next()
           
         if (product == "nspp"){
           #devtools::load_all()
