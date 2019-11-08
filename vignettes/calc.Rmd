@@ -295,13 +295,14 @@ Based on 0.5 probability threshold.
 spp_prob_threshold <- 0.5
 
 # in_bbnj: cells in high seasm, from BBNJ package ----
-r_pu_id <- raster(here("../bbnj/inst/data/pu_id.tif"))
+r_pu_id <- raster(here("../bbnj/inst/data/pu_id.tif")) # mapview::mapview(r_pu_id)
 cells_bbnj <- tibble(
   cellid = raster::values(r_pu_id)) %>% 
   filter(!is.na(cellid)) %>% 
   mutate(in_bbnj = T)
 
 cells2 <- tbl(con, "cells") %>% 
+  select(-OceanArea) %>% 
   # join with ocean area per cell
   left_join(
     tbl(con, "env_cells"),
@@ -364,13 +365,30 @@ spp_sum <- tbl(con, "spp_cells") %>%
     area_bbnj_pct_cat = cut(
       area_bbnj_pct, pct_brks, include.lowest = T)) # 2 min
 table(spp_sum$area_bbnj_pct_cat, useNA = "ifany")
+# [0,0.001] (0.001,0.25]     (0.25,1] 
+#     13217         9008         2673
+
+# copy_to(
+#   con, spp_sum, "spp", temporary=F, overwrite=T,
+#   unique_indexes=list("SPECIESID"),
+#   indexes = list(
+#     "groups00", 
+#     "groups01", "groups02", "groups03"))
+copy_to(
+  con, spp_sum, "spp_sum", temporary=F, overwrite=T,
+  unique_indexes=list("SpeciesID"))
+
+spp2 <- tbl(con, "spp") %>% 
+  collect() %>% 
+  #paste(intersect(dbListFields(con, "spp"), names(spp_sum)), collapse=", -")
+  select(-n_cells, -area_ocean_km2, -area_bbnj_km2, -area_bbnj_pct, -area_bbnj_pct_cat) %>% 
+  left_join(
+    spp_sum, by=c("SPECIESID"="SpeciesID"))
 
 copy_to(
-  con, spp_sum, "spp", temporary=F, overwrite=T,
+  con, spp2, "spp", temporary=F, overwrite=T,
   unique_indexes=list("SPECIESID"),
-  indexes = list(
-    "groups00", 
-    "groups01", "groups02", "groups03"))
+  indexes = c("group", sprintf("groups%02d", 0:6)) %>% as.list())
 
 # spp_sum <- spp_sum %>% 
 #   mutate(
@@ -396,10 +414,7 @@ write_csv(spp_bbnj, spp_bbnj_csv)
 copy_to(
   con, spp_bbnj, "spp", temporary=F, overwrite=T,
   unique_indexes=list("SPECIESID"),
-  indexes = list(
-    "group", "groups00", 
-    "groups01", "groups02", "groups03",
-    "groups04", "groups05", "groups06"))
+  indexes = c("group", sprintf("groups%02d", 0:6)) %>% as.list())
 
 # TODO: update below to summarize for all groups##
 #setdiff(names(spp_bbnj), tbl_cols(con, "spp"))
