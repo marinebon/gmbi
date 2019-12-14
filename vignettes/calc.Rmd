@@ -58,9 +58,18 @@ docker run --name=postgis \
   -p 5432:5432 \
   -v pg_data:/var/lib/postgresql \
   -v /Users/bbest/docker_pg_data:/data \
-  --restart=always \
+  --restart=unless-stopped \
   --shm-size=1g \
   kartoza/postgis:11.0-2.5
+
+# list all containers
+docker containers ls -a
+
+# stop
+docker container stop postgis
+
+# start
+docker container start postgis
 
 # check logs
 docker logs postgis
@@ -367,6 +376,10 @@ spp_sum <- tbl(con, "spp_cells") %>%
 table(spp_sum$area_bbnj_pct_cat, useNA = "ifany")
 # [0,0.001] (0.001,0.25]     (0.25,1] 
 #     13217         9008         2673
+#     
+table(spp_sum$area_bbnj_pct_cat, useNA = "ifany")/nrow(spp_sum)
+# [0,0.001] (0.001,0.25]     (0.25,1] 
+# 0.5308459    0.3617961    0.1073580
 
 # copy_to(
 #   con, spp_sum, "spp", temporary=F, overwrite=T,
