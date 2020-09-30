@@ -16,4 +16,5 @@ RoxygenNote: 6.1.1
 URL: https://github.com/marinebon/gmbi
 BugReports: https://github.com/marinebon/gmbi/issues
 Imports: 
-    RPostgreSQL
+    RPostgreSQL,
+    rredlist
